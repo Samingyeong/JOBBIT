@@ -29,7 +29,7 @@ Offline-first career prep desktop companion. The seed is 166 days of a real appr
 
 ## Before opening a PR (required)
 1. Run `npm run check` and `npm run lint` (ESLint + jscpd, duplication > 3% fails). If `src-tauri/` changed, also `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` in `src-tauri/` (needs Tauri Linux deps; otherwise rely on the `rust-lint` CI job and say so).
-2. Write the review inputs into `.review/` (gitignored): `diff.patch` (`git add -A && git diff --cached <base> -- . ':!package-lock.json'`, where `<base>` is the PR's base branch — this includes uncommitted and new files), `checks.txt` (actual output of step 1), `scope.md` (roadmap step + intent).
+2. Write the review inputs into `.review/` (gitignored): `diff.patch` (`git add -A && git diff --cached <base> -- . ':!package-lock.json'`, where `<base>` is the PR's base branch — this includes uncommitted and new files; then check `git status` so no unintended file got staged), `checks.txt` (actual output of step 1), `scope.md` (roadmap step + intent).
 3. Run **both** reviews on the same change:
    - the `pr-reviewer` subagent (`.claude/agents/pr-reviewer.md`, read-only) — JOBBIT-specific checks. Subagents register at session start; if it is not available (e.g. the PR creates or edits it), run the read-only `Explore` agent with the instruction to read `.claude/agents/pr-reviewer.md` and follow it exactly, without Bash, and say so in the PR body.
    - `/code-review` (Anthropic code-review) — general correctness bugs

@@ -16,9 +16,10 @@ export default [
     files: ['scripts/**/*.mjs', '*.mjs'],
     languageOptions: { globals: globals.node },
   },
-  // React 규칙: 아직 React 코드는 없음. jsx/tsx가 생기면 자동 적용.
+  // React 규칙: 아직 React 코드는 없음. .jsx가 생기면 자동 적용.
+  // .tsx는 TypeScript 파서(typescript-eslint)가 필요하므로 TS 도입 단계에서 추가.
   {
-    files: ['**/*.{jsx,tsx}'],
+    files: ['**/*.jsx'],
     plugins: { react, 'react-hooks': reactHooks },
     languageOptions: {
       sourceType: 'module',

@@ -8,7 +8,7 @@
 ## 2026-11-12 · 1.5단계 — PR 검증 체계
 
 ### 한 일
-- `check` 작업에 `npm run lint` 추가: ESLint 9(권장 규칙, `jsx`/`tsx`에만 React·Hooks 규칙) + jscpd 4(50토큰, 중복률 3% 초과 시 실패)
+- `check` 작업에 `npm run lint` 추가: ESLint 9(권장 규칙, `.jsx`에만 React·Hooks 규칙) + jscpd 4(50토큰, 중복률 3% 초과 시 실패)
 - `rust-lint` 별도 작업 추가: Tauri v2 Linux 의존 패키지 설치 → `cargo fmt --check` → `cargo clippy --locked --all-targets -- -D warnings`
 - `.claude/agents/pr-reviewer.md` 읽기 전용 리뷰어 추가, `CLAUDE.md`에 PR 전 리뷰 규칙(`pr-reviewer` + `/code-review`), 개발 기록 규칙, 옵시디언용 문서 규칙 추가
 - 이 개발 기록 파일 추가
@@ -25,12 +25,12 @@
   - `windows-build`가 `check`에 묶여 lint 실패 시 설치 파일이 안 만들어짐 → 의존 관계 제거
   - 새로 만든 서브에이전트는 다음 세션부터 등록되어 이번 세션에서 `pr-reviewer`를 바로 실행할 수 없음 → 읽기 전용 `Explore` 에이전트에 정의 파일을 따르게 하는 대체 방법을 `CLAUDE.md`에 명시
 - `pr-reviewer`(대체 실행)가 지적: 로드맵 `[CI]` 표기 설명에 `rust-lint` 누락 → 추가. `web/styles.css`가 jscpd 결과에 없음 → 확인해 보니 CSS가 2줄로 압축돼 있어 jscpd 기본값(5줄 미만 파일 제외)에 걸려 빠지고 있었음 → `minLines: 1`로 바꿔 토큰 기준(50토큰)으로만 판단, CSS 포함 후에도 중복 0%
-- 1단계 PR이 아직 병합 전(Windows 수동 확인 대기)이라 `main`에서 시작할 수 없음 → `step-1/docs-ci` 위에 쌓은 PR로 올리고, 1단계 병합 후 base를 `main`으로 변경
+- 작업을 시작할 때 1단계 PR이 병합 전이라 `step-1/docs-ci` 위에서 브랜치를 만듦 → PR을 올리기 전에 1단계가 병합(merge commit)되어 `main`을 base로 바로 올림
 
 ### 결정 사항과 이유
 - **Rust 검사를 별도 작업으로 분리**: clippy는 Tauri Linux 패키지 설치와 컴파일로 몇 분 걸림. `check`와 동시에 돌려 데이터·lint 결과를 먼저 받기 위해(목표 1분 안팎, 실측은 PR CI 후 기록)
 - **jscpd 3% / 50토큰**: 현재 중복 0%. 작은 코드베이스에서 우연한 겹침은 허용하고 복사·붙여넣기는 잡는 수준. 생성 파일(166일 JSON, lock, 빌드 결과물, 아이콘)은 검사 제외
-- **React 규칙은 `jsx`/`tsx`에만 적용**: 지금 프론트엔드는 순수 JS라 적용 대상이 없음. React를 도입하면 설정 변경 없이 바로 적용됨
+- **React 규칙은 `.jsx`에만 적용**: 지금 프론트엔드는 순수 JS라 적용 대상이 없음. React를 `.jsx`로 도입하면 설정 변경 없이 바로 적용됨. `.tsx`는 기본 파서가 TypeScript 문법을 읽지 못해 `typescript-eslint` 파서가 필요하므로 TS 도입 단계에서 추가(`pr-reviewer` 지적)
 - **`pr-reviewer`에 Bash를 주지 않음**: Bash가 있으면 명령으로 파일을 바꿀 수 있어 읽기 전용이 보장되지 않음. 변경 내용은 `.review/`에 파일로 넘김
 - **메모리 플러그인 대신 이 파일 사용**: 클라우드 세션은 끝나면 컨테이너가 지워져 로컬 메모리가 남지 않음. 저장소에 기록해야 다음 세션과 사람이 모두 읽을 수 있음
 

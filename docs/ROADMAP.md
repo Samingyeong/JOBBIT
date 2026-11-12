@@ -26,7 +26,8 @@
 
 `[CI]` 항목은 PR의 CI가 통과한 뒤에 체크합니다.
 
-- [ ] `check` 작업에 `npm run lint` 추가: ESLint(권장 규칙 + `jsx`/`tsx` React 규칙) + jscpd **[로컬][CI]**
+- [ ] `check` 작업에 `npm run lint` 추가: ESLint(권장 규칙 + `.jsx` React 규칙, `.tsx`는 TS 도입 시 파서와 함께 추가) + jscpd **[로컬][CI]**
+  - jscpd 검사 대상: `web`, `scripts`, `src-tauri/src`
   - jscpd: 50토큰 이상 겹침을 중복으로 보고, 중복률 **3% 초과 시 실패**
   - 제외: `web/data/`(166일 JSON 등), lock 파일, `src-tauri/target`·`gen`, 아이콘, `node_modules`
 - [ ] `rust-lint` 별도 작업(ubuntu): Tauri Linux 의존 패키지 설치 → `cargo fmt --check`, `cargo clippy -D warnings` **[CI]**
