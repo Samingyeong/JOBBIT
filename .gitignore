@@ -3,3 +3,9 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 *.log
+
+# pr-reviewer 입력 (커밋하지 않음)
+.review/
+
+# Obsidian 볼트 설정 (docs/를 볼트로 열 때 생성)
+.obsidian/
