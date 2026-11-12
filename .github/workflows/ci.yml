@@ -15,20 +15,55 @@ permissions:
 
 jobs:
   check:
-    name: check (166일 데이터·문법)
+    name: check (166일 데이터·문법·lint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - run: npm run check
+      - name: ESLint + jscpd (중복률 3% 초과 시 실패)
+        run: npm run lint
+
+  rust-lint:
+    name: rust-lint (cargo fmt·clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      # clippy가 tauri를 컴파일하려면 Tauri v2 Linux 시스템 패키지가 필요
+      - name: Tauri Linux 의존 패키지 설치
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust 캐시
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
 
   windows-build:
     name: windows-build (Tauri 설치 파일)
     # main 푸시 때는 돌지 않고, PR과 수동 실행 때만 Windows 빌드
+    # lint 실패와 상관없이 설치 파일은 만들어 수동 확인이 막히지 않게 함
     if: github.event_name != 'push'
-    needs: check
     runs-on: windows-latest
     timeout-minutes: 45
     steps:

@@ -1,11 +1,13 @@
 # JOBBIT 로드맵
 
+관련 문서: [개발 기록](DEVLOG.md) · [기술 결정](TECH_DECISIONS.md)
+
 단계마다 **계획 제시 → 사용자 승인 → 구현 → PR + CI 검증** 순서로 진행합니다.
 기존 앱을 처음부터 다시 쓰지 않습니다. 166일 계획, 완료 기록, 메모, 백업/복원, 오프라인 우선 동작은 모든 단계에서 유지합니다.
 
 검증 표기:
 - **[로컬]** Linux 개발 환경에서 직접 실행해 확인
-- **[CI]** GitHub Actions(`check` / `windows-build`)로 확인
+- **[CI]** GitHub Actions(`check` / `rust-lint` / `windows-build`)로 확인
 - **[수동]** 실제 Windows PC에서 사람이 직접 확인해야 함 (CI로 대체 불가)
 
 ---
@@ -18,6 +20,22 @@
 - [x] `package-lock.json`, `src-tauri/Cargo.lock` 커밋
 - [x] `check` 작업: push(main)·PR·수동 실행 시 `npm run check` **[CI]**
 - [x] `windows-build` 작업: PR·수동 실행 시에만 `tauri build`, Rust 캐시 사용, 설치 파일을 artifact로 업로드 **[CI]**
+
+## 1.5단계 — PR 검증 체계
+브랜치: `step-1.5/pr-checks`
+
+`[CI]` 항목은 PR의 CI가 통과한 뒤에 체크합니다.
+
+- [ ] `check` 작업에 `npm run lint` 추가: ESLint(권장 규칙 + `.jsx` React 규칙, `.tsx`는 TS 도입 시 파서와 함께 추가) + jscpd **[로컬][CI]**
+  - jscpd 검사 대상: `web`, `scripts`, `src-tauri/src`
+  - jscpd: 50토큰 이상 겹침을 중복으로 보고, 중복률 **3% 초과 시 실패**
+  - 제외: `web/data/`(166일 JSON 등), lock 파일, `src-tauri/target`·`gen`, 아이콘, `node_modules`
+- [ ] `rust-lint` 별도 작업(ubuntu): Tauri Linux 의존 패키지 설치 → `cargo fmt --check`, `cargo clippy -D warnings` **[CI]**
+- [x] 기존 코드 정리: `cargo fmt` 적용, 쓰이지 않는 `safeHref` 제거 (동작 변화 없음)
+- [x] `.claude/agents/pr-reviewer.md`: 읽기 전용(Read/Grep/Glob) 리뷰 서브에이전트, "반드시 수정 / 권장 / 참고" 보고
+- [x] `CLAUDE.md`: PR 전 `pr-reviewer`와 `/code-review`를 둘 다 실행하고 결과를 PR 본문에 첨부. "반드시 수정"(또는 `/code-review`의 버그 지적)이 남으면 PR 금지, 사용자가 명시적으로 승인한 경우에만 사유를 적고 예외
+- [x] [개발 기록](DEVLOG.md) 추가, 단계가 끝날 때마다 한 일 / 문제와 해결 / 결정 사항과 이유를 기록하는 규칙
+- [x] `docs/` 문서는 옵시디언 볼트로 열 수 있게 일반 마크다운 상대 링크만 사용(`[[위키링크]]` 금지), `.obsidian/`은 커밋하지 않음
 
 ## 2단계 — 데스크톱 펫 오버레이 + TODO 패널 분리
 목표: Tauri 2로 **창 두 개**를 분리합니다. 하나는 항상 위에 떠 있는 작고 투명한 펫 창이고, 다른 하나는 펫을 클릭하면 열리는 일반 TODO/대시보드 패널입니다.

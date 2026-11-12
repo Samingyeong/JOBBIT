@@ -1,0 +1,26 @@
+{
+  "threshold": 3,
+  "minTokens": 50,
+  "reporters": [
+    "console"
+  ],
+  "absolute": false,
+  "gitignore": true,
+  "path": [
+    "web",
+    "scripts",
+    "src-tauri/src"
+  ],
+  "ignore": [
+    "**/node_modules/**",
+    "**/web/data/**",
+    "**/*.lock",
+    "**/package-lock.json",
+    "**/src-tauri/target/**",
+    "**/src-tauri/gen/**",
+    "**/src-tauri/icons/**",
+    "**/.review/**"
+  ],
+  "minLines": 1,
+  "maxLines": 5000
+}

@@ -1,6 +1,6 @@
 # JOBBIT — Claude Code project instructions
 
-Read this file, then `README.md` and `docs/ROADMAP.md` before starting work.
+Read this file, then `README.md`, `docs/ROADMAP.md` and the latest entry of `docs/DEVLOG.md` before starting work.
 
 ## Product
 Offline-first career prep desktop companion. The seed is 166 days of a real approved master plan under `web/data/plan.json`; do not regenerate, flatten or overwrite it without approval. `web/data/plan.json` is generated from the original spreadsheet; regenerate via `scripts/export_plan.py` rather than hand-editing the plan.
@@ -27,8 +27,26 @@ Offline-first career prep desktop companion. The seed is 166 days of a real appr
 - CI: `.github/workflows/`
 - Shared state schema changes require a versioned migration and QA checklist.
 
+## Before opening a PR (required)
+1. Run `npm run check` and `npm run lint` (ESLint + jscpd, duplication > 3% fails). If `src-tauri/` changed, also `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` in `src-tauri/` (needs Tauri Linux deps; otherwise rely on the `rust-lint` CI job and say so).
+2. Write the review inputs into `.review/` (gitignored): `diff.patch` (`git add -A && git diff --cached <base> -- . ':!package-lock.json'`, where `<base>` is the PR's base branch — this includes uncommitted and new files; then check `git status` so no unintended file got staged), `checks.txt` (actual output of step 1), `scope.md` (roadmap step + intent).
+3. Run **both** reviews on the same change:
+   - the `pr-reviewer` subagent (`.claude/agents/pr-reviewer.md`, read-only) — JOBBIT-specific checks. Subagents register at session start; if it is not available (e.g. the PR creates or edits it), run the read-only `Explore` agent with the instruction to read `.claude/agents/pr-reviewer.md` and follow it exactly, without Bash, and say so in the PR body.
+   - `/code-review` (Anthropic code-review) — general correctness bugs
+4. **No PR while any "반드시 수정" item from `pr-reviewer`, or any correctness bug reported by `/code-review`, is open.** Fix them and re-run both reviews.
+   - Exception: only if the user explicitly approves opening the PR with a specific item unresolved. Then add a `### 미해결 반드시 수정 (사용자 승인)` subsection to the PR body listing each item with the reason and the user's approval.
+5. Paste the final `pr-reviewer` output verbatim into the PR body under `## pr-reviewer 결과`, and the `/code-review` findings (or "no findings") under `## code-review 결과`.
+
+## When a roadmap step ends
+Add an entry to `docs/DEVLOG.md` (newest at the top) with three parts: **한 일**, **문제와 해결**, **결정 사항과 이유**. Include it in the step's PR. Keep it factual: what was verified and how, what was not.
+
+## Docs format (Obsidian)
+The user opens `docs/` as an Obsidian vault. In `docs/*.md`:
+- Use standard Markdown links with relative paths, e.g. `[로드맵](ROADMAP.md)` — never `[[wikilinks]]`.
+- Link only between files inside `docs/`; refer to files outside it (e.g. `CLAUDE.md`, `web/app.js`) as inline code, since `../` links don't resolve inside the vault.
+- `docs/.obsidian/` is the user's local vault config and is gitignored.
+
 ## Verification
-- `npm run check` before every PR.
 - Windows desktop build is verified by the `windows-build` GitHub Actions job (runs on PRs and manual dispatch). A green CI build proves the app compiles and packages on Windows — it does **not** prove visual/interactive behavior (transparency, click-through, drag). Those stay on the manual checklist in `docs/ROADMAP.md`.
 - Manual web QA: start web, check first/last day navigation, step check, status after reload, backup import/export, hostile text escaping, planned days = 166.
 - Do not claim Windows behavior was tested based on browser checks.

@@ -3,7 +3,6 @@ const $ = id => document.getElementById(id);
 const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 const dateLabel = iso => new Intl.DateTimeFormat('ko-KR',{month:'long',day:'numeric',weekday:'short'}).format(new Date(`${iso}T12:00:00`));
 const escapeHtml = str => String(str??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const safeHref = str => /^https?:\/\//i.test(str||'') ? str : '';
 let plan=[];let progress={};let selectedIndex=0;
 function loadLocal(){try {progress=JSON.parse(localStorage.getItem(STORAGE)||'{}');if(!progress||typeof progress!=='object'||Array.isArray(progress))progress={};}catch {progress={};}}
 function save(){localStorage.setItem(STORAGE,JSON.stringify(progress));}

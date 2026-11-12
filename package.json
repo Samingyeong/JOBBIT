@@ -6,9 +6,16 @@
     "web": "node scripts/dev-server.mjs",
     "desktop": "tauri dev",
     "build:desktop": "tauri build",
-    "check": "node --check web/app.js && node --check scripts/dev-server.mjs && node scripts/check.mjs"
+    "check": "node --check web/app.js && node --check scripts/dev-server.mjs && node scripts/check.mjs",
+    "lint": "eslint . && jscpd"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "@eslint/js": "^9.39.5",
+    "@tauri-apps/cli": "^2.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "jscpd": "^4.3.0"
   }
 }
