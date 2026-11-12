@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#F6F8FE" />
+  <title>JOBBIT — 2027 취준 메이트</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brandmark">🐰</div><div><strong>JOBBIT</strong><span>2027 JOB QUEST</span></div></div>
+    <div class="actions"><button id="todayBtn" class="btn small ghost">오늘로</button><button id="exportBtn" class="btn small ghost" title="학습기록 내보내기">백업 ↓</button></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="hero-copy"><span class="eyebrow">YOUR DAILY COMPANION</span><h1>오늘도 한 칸씩,<br/><em>취업에 가까워져요.</em></h1><p>기획·운영 · 프론트엔드 · AI Native를 함께 준비하는 나만의 데스크톱 메이트</p></div>
+      <div class="hero-bunny" role="img" aria-label="웃고 있는 토끼 캐릭터"><div class="ear ear-left"></div><div class="ear ear-right"></div><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="cheek left"></span><span class="cheek right"></span><span class="nose">ᴗ</span></div></div>
+    </section>
+    <section class="stats" aria-label="학습 진행 현황">
+      <div class="stat"><span>전체 달성</span><b id="overall">0<small>%</small></b><div class="progress"><div id="overallBar"></div></div></div>
+      <div class="stat"><span>완료한 날짜</span><b id="finished">0<small> / 166일</small></b></div>
+      <div class="stat"><span>오늘 상태</span><b id="dayState" class="state-text">시작 전</b></div>
+    </section>
+    <section class="planner">
+      <div class="section-head"><div><span class="eyebrow">DAILY QUEST</span><h2>오늘의 미션</h2></div><div class="date-controls"><button id="prevDay" aria-label="전날">‹</button><span id="selectedDate">날짜</span><button id="nextDay" aria-label="다음날">›</button></div></div>
+      <div id="mission" class="mission" aria-live="polite"></div>
+    </section>
+    <section class="bottom-grid">
+      <div class="side-card"><div class="labelrow"><span class="icon">📊</span><b>직무별 진도</b></div><div id="trackProgress"></div></div>
+      <div class="side-card"><div class="labelrow"><span class="icon">🧠</span><b>이번 주 목표</b></div><p id="weeklyTheme">계획을 불러오는 중…</p><div class="weekly-progress"><div id="weekBar"></div></div><span id="weeklyCount" class="muted"></span></div>
+    </section>
+    <footer><span>모든 기록은 현재 기기에만 저장됩니다.</span><label class="importLabel" for="importFile">백업 불러오기 ↑</label><input id="importFile" type="file" accept="application/json" hidden/></footer>
+  </main>
+</div>
+<div class="pet-chip" id="petChip" role="button" tabindex="0" title="오늘의 미션 열기"><span class="pet-emoji">🐇</span><span id="petSpeech">출발해 볼까요?</span></div>
+<script type="module" src="./app.js"></script>
+</body></html>

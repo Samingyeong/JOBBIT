@@ -1,0 +1,11 @@
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const data=JSON.parse(await readFile('./web/data/plan.json','utf8'));
+const criteria=JSON.parse(await readFile('./web/data/competencies.json','utf8'));
+assert.equal(data.length,166,'expected 166 planned days');
+assert.equal(criteria.length,32,'expected 32 competency criteria');
+assert.equal(data[0].date,'2026-11-16');
+assert.equal(data.at(-1).date,'2027-04-30');
+assert.equal(new Set(data.map(x=>x.date)).size,166,'date must be unique');
+assert.ok(data.every(x=>x.title&&x.acceptance&&x.deliverable&&x.method&&x.id));
+console.log('PASS: 166 seeded days, 32 skills, dates unique, tasks complete');

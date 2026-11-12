@@ -1,0 +1,14 @@
+{
+  "name": "jobbit-starter",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "web": "node scripts/dev-server.mjs",
+    "desktop": "tauri dev",
+    "build:desktop": "tauri build",
+    "check": "node --check web/app.js && node --check scripts/dev-server.mjs && node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
