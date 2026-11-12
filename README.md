@@ -21,7 +21,7 @@
 3. `npm run desktop` — 개발 실행
 4. `npm run build:desktop` — Windows 실행파일 빌드
 
-이 환경에서 실제 Rust/Windows 빌드를 수행하지 않았습니다. 소스에는 Tauri 기본 래퍼가 포함되어 있지만, 윈도우별 설정/아이콘/설치 패키징/클릭 통과는 아직 검증되지 않았습니다.
+Windows 빌드는 GitHub Actions의 `windows-build` 작업이 PR과 수동 실행(Actions → CI → Run workflow) 때 검증하고, 설치 파일을 artifact로 올립니다. 코드 서명이 없어 설치 시 SmartScreen 경고가 뜹니다. 투명 창·클릭 통과·드래그 같은 화면 동작은 CI로 확인할 수 없어 [`docs/ROADMAP.md`](docs/ROADMAP.md)의 수동 체크리스트로 확인합니다.
 
 ## 데이터 구조
 - `web/data/plan.json`: 원본 Excel `일별계획` 시트의 166일
@@ -30,12 +30,15 @@
 - 출처 `.xlsx` 수정 후: `python scripts/export_plan.py <원본.xlsx>` (artifact_tool 필요)
 
 ## 남은 기능
+단계별 계획과 완료 기준은 [`docs/ROADMAP.md`](docs/ROADMAP.md)에 있습니다.
+
 - [ ] 작은 독립 펫 오버레이 창, 클릭 통과 및 드래그
 - [ ] SQLite 기반 상태 저장과 백업 마이그레이션
 - [ ] OS 부팅시 자동 시작, 알림 예약/끄기
 - [ ] GitHub OAuth 및 PR/테스트 증거 연결
 - [ ] Skill/Agent 호출과 평가 권한 검증
-- [ ] Playwright E2E 및 Tauri Windows 실제 빌드
+- [ ] Playwright E2E
+- [x] Tauri Windows 빌드 CI (설치 파일 수동 검증은 2단계)
 
 ## 안전 원칙
 - AI가 완료를 자동 판정하거나 일정을 수정하지 않음
