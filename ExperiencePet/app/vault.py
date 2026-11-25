@@ -3,7 +3,6 @@ Only writes inside a user-selected Vault, never modifies non-owned notes.
 """
 from __future__ import annotations
 from experience_format import normalize, read_note, SECTIONS
-from dataclasses import dataclass
 from datetime import datetime
 from itertools import chain
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -23,14 +22,6 @@ DEFAULTS = {
     'hide_fullscreen': True, 'use_mcp': False,
     'mcp_url': 'http://127.0.0.1:27123/mcp/',
 }
-
-
-@dataclass(frozen=True)
-class CaptureSource:
-    path: Path
-    title: str
-    created: str
-    project: str
 
 
 def load_settings() -> dict:
@@ -211,34 +202,6 @@ class VaultStore:
             stamp=re.search(r'^created:[ \t]*([^\n]+)',meta,re.M)
             return path,stamp[1].strip() if stamp else ''
         return None,''
-
-    def capture_sources(self):
-        folder=self.root/'03 Daily Logs'
-        if folder.resolve()!=folder:
-            return []
-        captures=[]
-        for path in folder.glob('*.md'):
-            try:
-                if path.resolve()!=path:
-                    continue
-                meta,body=read_note(path)
-            except (OSError,UnicodeError):
-                continue
-            if not re.search(r'^type:[ \t]*daily_capture[ \t]*$',meta,re.M):
-                continue
-            stamp=re.search(r'^created:[ \t]*["\x27]?([^"\x27\n]+)',meta,re.M)
-            heading=re.search(r'^# (.+)',body,re.M)
-            field=re.search(r'^project:[ \t]*(.*)',meta,re.M)
-            project=field[1].strip() if field else ''
-            if project.startswith('"'):
-                try:
-                    project=json.loads(project)
-                except ValueError:
-                    project=project.strip('"')
-            captures.append(CaptureSource(path,heading[1] if heading else path.stem,
-                                          stamp[1].strip() if stamp else '',
-                                          project.strip("'").removeprefix('[[').removesuffix(']]')))
-        return sorted(captures,key=lambda capture:(capture.created,capture.path.name),reverse=True)
 
     def save_experience(self, title: str, body: str, project: str, source: str | None = None,
                         *, infer_title: bool = True):

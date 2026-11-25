@@ -6,6 +6,7 @@ claims to receive its messages automatically without an API integration.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass,replace
 from math import sin
 from pathlib import Path
 import re
@@ -14,7 +15,7 @@ import uuid
 from urllib.parse import unquote,urlsplit
 import webbrowser
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, simpledialog
 from PIL import Image, ImageOps, ImageTk
 
 from diary_board import DiaryBoard
@@ -100,6 +101,12 @@ class ProjectTagDialog(simpledialog.Dialog):
         return True
 
 
+@dataclass(frozen=True)
+class DraftLink:
+    path: Path | None
+    project: str
+
+
 class CaptureWindow:
     WIDTH, HEIGHT=628, 792
 
@@ -122,11 +129,9 @@ class CaptureWindow:
         self.session=app.store.new_session() if app.store else None
         self.session_store=app.store
         self.backup_id=uuid.uuid4().hex[:12]
-        self.source_path=None
-        self.final_source=None
-        self.pending_source=None
-        self.source_explicit=False
-        self.capture_choices=[]
+        self.current_draft=None
+        self.staged_draft=None
+        self.final_draft=None
         self.dirty_after=None
         self.title_var=tk.StringVar(value='오늘의 경험')
         self.project_var=tk.StringVar()
@@ -664,7 +669,7 @@ class CaptureWindow:
             self.final_art.place(x=-24,rely=1,y=24,anchor='sw')
             if self.dirty_after is not None:
                 self.flush()
-            self.refresh_capture_choices()
+            self.show_final_project()
         if view=='archive':
             self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
@@ -727,6 +732,7 @@ class CaptureWindow:
         self.raw.pack(fill='both',expand=True,padx=23,pady=(19,6))
         self.raw.bind('<<Modified>>',self.changed)
         self.button(tag_row,'임시저장',self.save_capture_draft,'#ffefae').pack(side='right',padx=(6,0),before=chips)
+        self.button(tag_row,'+ 새 경험',self.start_new_capture,'#ffefae').pack(side='right',padx=(6,0),before=chips)
 
     def new_tag(self):
         if not self.app.store:
@@ -748,14 +754,11 @@ class CaptureWindow:
         rule=tk.Canvas(header,bg=PAPER,height=self.title_rule.height(),highlightthickness=0)
         rule.pack(fill='x')
         rule.create_image(0,0,image=self.title_rule,anchor='nw')
-        source_row=tk.Frame(header,bg=PAPER)
-        source_row.pack(fill='x',pady=(8,0))
-        tk.Label(source_row,text='해당 경험',bg=PAPER,fg=BROWN,
-                 font=('Malgun Gothic',10,'bold')).pack(side='left',padx=(0,8))
-        self.source_combo=ttk.Combobox(source_row,state='readonly',width=1,font=cute_font(self.win,10))
-        self.source_combo.pack(side='left',fill='x',expand=True)
-        self.source_combo.bind('<<ComboboxSelected>>',self.pick_capture)
-        self.button(source_row,'+ 경험 추가',self.start_new_capture,'#ffefae').pack(side='right',padx=(7,0))
+        self.final_project=tk.StringVar()
+        project_label=tk.Label(header,textvariable=self.final_project,bg=PAPER,fg=BROWN,
+                               justify='left',font=('Malgun Gothic',10,'bold'))
+        project_label.pack(anchor='w',pady=(8,0))
+        header.bind('<Configure>',lambda event:project_label.configure(wraplength=max(80,event.width-8)))
         sheet=tk.Frame(self.final_page,bg=CREAM,highlightbackground=EDGE,highlightthickness=1)
         self.final_sheet=sheet
         sheet.pack(fill='both',expand=True)
@@ -780,36 +783,20 @@ class CaptureWindow:
             self.win.after_cancel(self.dirty_after)
         self.dirty_after=self.win.after(850,self.flush)
 
-    def refresh_capture_choices(self):
-        store=self.app.store
-        self.capture_choices=store.capture_sources() if store else []
-        labels=['연결하지 않음']
-        for capture in self.capture_choices:
-            stamp=capture.created[:16].replace('T',' ') or '날짜 미확인'
-            labels.append(f'{stamp} · {capture.title}')
-        if self.final_source is None and not self.source_explicit:
-            self.final_source=self.source_path
-        index=next((i for i,capture in enumerate(self.capture_choices,1)
-                    if capture.path==self.final_source),0)
-        self.source_combo.configure(values=labels)
-        if self.final_source is not None and not index:
-            self.source_combo.set('연결한 원본을 찾을 수 없어요')
-        else:
-            self.source_combo.current(index)
+    def next_draft(self):
+        return self.staged_draft or self.current_draft or DraftLink(None,self.project_var.get().strip())
 
-    def pick_capture(self,event=None):
-        index=self.source_combo.current()
-        self.final_source=self.capture_choices[index-1].path if index>0 else None
-        self.source_explicit=True
-        self.pending_source=None
+    def show_final_project(self):
+        draft=self.final_draft or self.next_draft()
+        self.final_project.set(f'프로젝트 · {draft.project or "미지정"}')
 
     def save_capture_draft(self):
         if not self.raw.get('1.0','end-1c').strip():
             self.status.set('임시저장할 메모를 먼저 적어 주세요.')
         elif self.flush():
-            if self.final_source is None or not self.preview.get('1.0','end-1c').strip():
-                self.final_source=self.source_path
-            self.status.set('임시저장했어요. 완성노트의 해당 경험에서 선택할 수 있어요.')
+            self.staged_draft=self.current_draft
+            self.show_final_project()
+            self.status.set('메모와 프로젝트를 임시저장했어요. 완성노트에 정리본을 붙여넣을 수 있어요.')
 
     def start_new_capture(self):
         if self.raw.get('1.0','end-1c').strip() and not self.flush():
@@ -819,10 +806,10 @@ class CaptureWindow:
         self.raw.edit_modified(False)
         self.raw.edit_reset()
         self.session=None
-        self.source_path=None
+        self.current_draft=None
         self.select_view('memo')
         self.raw.focus_set()
-        self.status.set('새 경험을 적어 주세요. 기존 메모는 완성노트에서 선택할 수 있어요.')
+        self.status.set('새 경험을 적고 프로젝트 태그를 선택해 주세요.')
 
     def flush(self):
         if self.dirty_after is not None:
@@ -841,17 +828,18 @@ class CaptureWindow:
         if self.session_store is not self.app.store:
             self.session_store=self.app.store
             self.session=None
-            self.source_path=None
+            self.current_draft=None
         if self.session is None:self.session=self.app.store.new_session()
         try:
-            previous=self.source_path
-            self.source_path=self.app.store.autosave(self.session,content,project)
-            if previous is not None and previous!=self.source_path:
-                if self.final_source==previous:
-                    self.final_source=self.source_path
-                if self.pending_source==previous:
-                    self.pending_source=self.source_path
-            self.status.set(f'✓ 오늘의 원본 기록 저장: {self.source_path.name}')
+            previous=self.current_draft
+            path=self.app.store.autosave(self.session,content,project)
+            self.current_draft=DraftLink(path,project)
+            if previous is not None and previous.path!=path:
+                for field in ('staged_draft','final_draft'):
+                    draft=getattr(self,field)
+                    if draft is not None and draft.path==previous.path:
+                        setattr(self,field,replace(draft,path=path))
+            self.status.set(f'✓ 오늘의 원본 기록 저장: {path.name}')
             return True
         except Exception as exc:
             APP_DATA.mkdir(parents=True,exist_ok=True)
@@ -866,19 +854,17 @@ class CaptureWindow:
         if not raw:
             messagebox.showinfo('오늘의 경험','어떤 일이 있었는지 한두 문장 먼저 적어 줘.',parent=self.win)
             return
-        self.pending_source=None
-        if self.flush():
-            self.pending_source=self.source_path
-            if not self.preview.get('1.0','end-1c').strip():
-                self.final_source=self.source_path
-                self.source_explicit=True
+        self.staged_draft=self.current_draft if self.flush() else DraftLink(None,self.project_var.get().strip())
+        self.show_final_project()
         related=self.app.store.related_notes(raw+' '+self.project_var.get()) if self.app.store else []
         prompt=make_gpt_prompt(raw,self.project_var.get(),related)
         prompt += ('\n\n[Experience Pet 플러그인]\n가능하다면 인터뷰가 끝난 뒤 검토한 경험 노트를 보여 주고, '
                    '사용자가 명시적으로 저장을 승인한 경우에만 save_experience_note 도구를 호출해. '
                    '플러그인이 연결되지 않았다면 저장에 성공한 척하지 말고 Markdown을 제공해.')
-        if self.pending_source:
-            prompt += f'\n플러그인으로 저장할 경우 원본 파일명 source_capture에는 {self.pending_source.name!r}을 사용해.'
+        if self.staged_draft.path:
+            prompt += f'\n플러그인으로 저장할 경우 원본 파일명 source_capture에는 {self.staged_draft.path.name!r}을 사용해.'
+        if self.staged_draft.project:
+            prompt += f'\n플러그인으로 저장할 경우 project에는 선택한 프로젝트명 {self.staged_draft.project!r}을 사용해.'
         self.win.clipboard_clear()
         self.win.clipboard_append(prompt)
         self.win.update()
@@ -901,11 +887,8 @@ class CaptureWindow:
         if title and self.title_var.get() in ('', '오늘의 경험'):
             self.title_var.set(title)
         self.preview.insert('1.0',markdown)
-        if self.pending_source:
-            self.final_source=self.pending_source
-            self.pending_source=None
-            self.source_explicit=True
-            self.refresh_capture_choices()
+        self.final_draft=self.next_draft()
+        self.show_final_project()
         self.status.set('정리본을 붙여넣었어. 수치와 사실을 확인하고 최종 저장해 줘.')
 
     def make_template(self):
@@ -913,6 +896,8 @@ class CaptureWindow:
         _,body=normalize(raw)
         self.preview.delete('1.0','end')
         self.preview.insert('1.0',body)
+        self.final_draft=self.next_draft()
+        self.show_final_project()
 
     def save_experience(self):
         if not self.app.store:
@@ -926,21 +911,25 @@ class CaptureWindow:
         if not title:
             messagebox.showinfo('경험 제목 필요','완성노트의 경험 제목을 입력해 주세요.',parent=self.win)
             return
-        source=next((capture for capture in self.app.store.capture_sources() if capture.path==self.final_source),None)
-        if self.final_source is not None and source is None:
-            messagebox.showwarning('원본 기록 확인','선택한 원본이 없어졌어요. 해당 경험에서 다시 선택해 주세요.',parent=self.win)
-            self.refresh_capture_choices()
+        draft=self.final_draft or self.next_draft()
+        if draft.path and (draft.path.resolve().parent!=self.app.store.root/'03 Daily Logs'
+                           or not draft.path.is_file()):
+            messagebox.showwarning('원본 기록 확인','연결된 임시 메모를 찾을 수 없어요. 오늘 이야기에서 다시 임시저장한 뒤 정리본을 붙여넣어 주세요.',parent=self.win)
             return
-        caption=f'\n경험 제목: {title}'
+        caption=f'\n경험 제목: {title}\n프로젝트: {draft.project or "미지정"}'
         if not messagebox.askyesno('경험 노트 확정','수치와 사실을 확인했어?\n확정한 내용으로 새 노트를 저장할게.'+caption,parent=self.win):
             return
         try:
-            project=source.project if source else self.project_var.get()
-            path=self.app.store.save_experience(title,body,project,source.path if source else None,
+            path=self.app.store.save_experience(title,body,draft.project,draft.path,
                                                 infer_title=False)
         except Exception as exc:
             messagebox.showerror('저장 실패',str(exc),parent=self.win)
         else:
+            if self.staged_draft==draft:
+                self.staged_draft=None
+            self.final_draft=None
+            self.preview.delete('1.0','end')
+            self.title_var.set('오늘의 경험')
             self.status.set(f'✓ 새 경험 노트 저장: {path.name}')
             self.library_project.set('전체 프로젝트')
             self.archive_query.set('')
