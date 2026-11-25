@@ -162,12 +162,12 @@ class CaptureWindow:
                  wraplength=310,justify='left',font=cute_font(self.win,9)).pack(side='left')
         self.project_var.trace_add('write',lambda *_:self.schedule_save())
         self.memo_footer=tk.Canvas(paper,bg=PAPER,height=112,highlightthickness=0)
+        self.project_colors={}
         self.memo_badges=(
-            self.design_image('901', (105,105), rotation=10.33),
-            self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64),
+            self.design_image('901', (105,105), rotation=10.33, trim=True),
+            self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64, trim=True),
         )
         self.memo_footer.bind('<Configure>',self.draw_memo_footer)
-        self.project_var.trace_add('write',self.draw_memo_footer)
         self.select_view('memo')
 
     def draw_memo_footer(self, *_):
@@ -178,21 +178,23 @@ class CaptureWindow:
         for x in range(0,width,274):
             footer.create_image(x,grid_y,image=self.paper_tile,anchor='nw')
             footer.create_image(x,grid_y+322,image=self.paper_tile,anchor='nw')
-        footer.create_rectangle(39,-3,width-39,height-12,fill=CREAM,outline=EDGE)
+        footer.create_rectangle(39,-1,width-40,height-12,fill=CREAM,outline='')
+        footer.create_line(39,0,39,height-12,width-40,height-12,width-40,0,fill=EDGE)
         footer.create_text(63,16,text='오늘의 메모',font=cute_font(self.win,12,True),
                            fill=BROWN,anchor='w')
         project=self.project_var.get().strip()
-        if project:
+        if project in self.project_colors:
             from tkinter.font import Font
             font=Font(root=self.win,font=cute_font(self.win,10))
             chip_width=min(font.measure(project)+20,max(100,width-220))
-            roundrect(footer,63,34,63+chip_width,63,8,fill='#ffef96',outline='#f7d61d')
+            fill,outline=self.project_colors[project]
+            roundrect(footer,63,34,63+chip_width,63,8,fill=fill,outline=outline)
             footer.create_text(73,48,text=project,font=font,fill=BROWN,anchor='w',
                                width=chip_width-14)
-        footer.create_image(-33,-3,image=self.memo_badges[0],anchor='nw')
-        footer.create_image(width-124,-4,image=self.memo_badges[1],anchor='nw')
+        footer.create_image(3,height-3,image=self.memo_badges[0],anchor='sw')
+        footer.create_image(width-3,height-3,image=self.memo_badges[1],anchor='se')
 
-    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1):
+    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False):
         width,height=size
         scale_x,scale_y,offset_x,offset_y=crop
         with Image.open(ASSETS/f'figma_{asset}.png') as source:
@@ -204,6 +206,9 @@ class CaptureWindow:
             result=result.rotate(-rotation,Image.Resampling.BICUBIC,expand=True)
         if opacity<1:
             result.putalpha(result.getchannel('A').point(lambda alpha:round(alpha*opacity)))
+        if trim:
+            result=result.crop(result.getchannel('A').getbbox())
+            result.thumbnail((105,105),Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(result,master=self.win)
 
     def _build_archive(self):
@@ -318,16 +323,17 @@ class CaptureWindow:
             chips.delete('all')
             font=tkfont.Font(root=self.win,family='Malgun Gothic',size=10,weight='bold')
             names=self.app.store.project_names() if self.app.store else []
+            colors=[('#c5ffba','#37812a'),('#ffbdbd','#ad4848'),('#ffe7ba','#a86727')]
+            self.project_colors={name:colors[i%len(colors)] for i,name in enumerate(names)}
             x=3
             for i,name in enumerate([*names,None]):
                 active=name is not None and self.project_var.get()==name
                 label=('+ 새 태그' if name is None else ('✓ ' if active else '')+name)
                 width=font.measure(label)+22
-                colors=[('#c5ffba','#37812a'),('#ffbdbd','#ad4848'),('#ffe7ba','#a86727')]
-                color,border=('#facc00','#ffef96') if active else colors[0 if name is None else i%len(colors)]
+                color,border=self.project_colors.get(name,colors[0])
                 tag='chip'+str(i)
-                roundrect(chips,x,5,x+width,41,8,fill=color,outline=border,width=1,tags=tag)
-                chips.create_text(x+width/2,23,text=label,font=font,fill='white' if active else BROWN,tags=tag)
+                roundrect(chips,x,5,x+width,41,8,fill=color,outline=border,width=2 if active else 1,tags=tag)
+                chips.create_text(x+width/2,23,text=label,font=font,fill=BROWN,tags=tag)
                 def choose(e,n=name):
                     if n is None: self.new_tag()
                     else: self.project_var.set('' if self.project_var.get()==n else n)
@@ -341,11 +347,15 @@ class CaptureWindow:
                 scroll.pack(fill='x',after=chips)
             elif x<=chips.winfo_width() and scroll.winfo_manager():
                 scroll.pack_forget()
+            self.draw_memo_footer()
         self.redraw_tags=draw_tags
         self.project_var.trace_add('write',lambda *_:draw_tags())
         chips.bind('<Configure>',draw_tags)
-        sheet=tk.Frame(self.memo_page,bg=CREAM,highlightbackground=EDGE,highlightthickness=1)
+        sheet=tk.Frame(self.memo_page,bg=CREAM)
         sheet.pack(fill='both',expand=True,pady=(12,0))
+        for edge,position in (('top',dict(relwidth=1,height=1)),('left',dict(relheight=1,width=1)),
+                              ('right',dict(relx=1,relheight=1,width=1,anchor='ne'))):
+            tk.Frame(sheet,bg=EDGE,name=f'border_{edge}').place(**position)
         self.raw=tk.Text(sheet,wrap='word',bg='white',fg=BROWN,relief='flat',bd=0,highlightthickness=0,
                   insertbackground=BROWN,font=cute_font(self.win,11),padx=14,pady=11,
                   selectbackground='#ffe6a5',undo=True,spacing2=4)
