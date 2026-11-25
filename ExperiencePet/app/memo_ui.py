@@ -195,8 +195,8 @@ class CaptureWindow:
             self.draw_paper_edge(banner,width,height)
             if self.view=='archive' and width>48 and height>167:
                 banner.create_image(24,150,image=self.archive_paper(width-48,height-167),anchor='nw')
-                banner.create_image(width-112,64,image=self.archive_art[0],anchor='nw')
-                banner.create_image(2,height-83,image=self.archive_art[1],anchor='nw')
+                banner.create_image(width-57,77,image=self.archive_art[0],anchor='nw')
+                banner.create_image(7,height-74,image=self.archive_art[1],anchor='nw')
 
         banner.bind('<Configure>',draw_banner)
         self.draw_banner=draw_banner
@@ -348,13 +348,14 @@ class CaptureWindow:
         self.reader_tables=[]
         self.reader_links=[]
         self.library_project=tk.StringVar(value='전체 프로젝트')
+        project_font=('Malgun Gothic',10,'bold')
         self.filter_button=tk.Menubutton(self.archive_page,textvariable=self.library_project,
                               bg=PAPER,fg=BROWN,relief='flat',padx=0,pady=3,cursor='hand2',
-                              font=cute_font(self.win,11,True))
+                              font=('Malgun Gothic',11,'bold'))
         self.filter_button.pack(anchor='w')
-        self.filters=tk.Menu(self.filter_button,tearoff=False)
+        self.filters=tk.Menu(self.filter_button,tearoff=False,font=project_font)
         self.filter_button.configure(menu=self.filters)
-        self.records=NoteRows(self.archive_page,cute_font(self.win,10,True),height=157,
+        self.records=NoteRows(self.archive_page,project_font,height=157,
                               on_select=self.read_record,on_open=self.open_record)
         self.records.pack(fill='x',pady=(4,9))
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
@@ -483,7 +484,13 @@ class CaptureWindow:
         messagebox.showinfo('링크 열기','Vault에서 연결된 노트를 찾을 수 없어요.',parent=self.win)
 
     def insert_reader_table(self, rows):
-        table=tk.Frame(self.reader,bg=EDGE)
+        container=tk.Frame(self.reader,bg=PAPER)
+        canvas=tk.Canvas(container,bg=PAPER,highlightthickness=0,borderwidth=0)
+        canvas.pack(fill='x')
+        scrollbar=tk.Scrollbar(container,orient='horizontal',command=canvas.xview)
+        canvas.configure(xscrollcommand=scrollbar.set)
+        table=tk.Frame(canvas,bg=EDGE)
+        item=canvas.create_window(0,0,window=table,anchor='nw')
         labels=[]
         for row,values in enumerate(rows):
             for column,value in enumerate(values):
@@ -495,20 +502,38 @@ class CaptureWindow:
                 labels.append(label)
         for column in range(len(rows[0])):
             table.columnconfigure(column,weight=1,uniform='column')
-        self.reader.window_create('end',window=table)
+        self.reader.window_create('end',window=container)
         self.reader.insert('end','\n')
-        self.reader_tables.append((table,(len(rows[0]),labels)))
-        self.resize_reader_table(len(rows[0]),labels)
+        layout=(canvas,table,item,scrollbar,len(rows[0]),labels)
+        self.reader_tables.append((container,layout))
+        self.resize_reader_table(*layout)
 
     def resize_reader_tables(self,event=None):
-        for _,(columns,labels) in self.reader_tables:
-            self.resize_reader_table(columns,labels)
+        for _,layout in self.reader_tables:
+            self.resize_reader_table(*layout)
 
-    def resize_reader_table(self,columns,labels):
-        width=max(20,max(self.reader.winfo_width()-24,180)//columns-12)
+    def resize_reader_table(self,canvas,table,item,scrollbar,columns,labels):
+        available=max(1,self.reader.winfo_width()-2*int(self.reader.cget('padx'))-4)
+        cell_width=max(72,available//columns)
+        table_width=columns*cell_width
+        width=cell_width-12
         for label in labels:
             if int(label.cget('wraplength'))!=width:
                 label.configure(wraplength=width)
+        canvas.configure(width=available)
+        canvas.itemconfigure(item,width=table_width)
+        if table_width>available and not scrollbar.winfo_manager():
+            scrollbar.pack(fill='x')
+        elif table_width<=available and scrollbar.winfo_manager():
+            scrollbar.pack_forget()
+            canvas.xview_moveto(0)
+
+        def fit_height():
+            if canvas.winfo_exists():
+                height=table.winfo_reqheight()
+                canvas.configure(height=height,scrollregion=(0,0,table_width,height))
+
+        canvas.after_idle(fit_height)
 
     def open_record(self):
         chosen=self.records.selected
@@ -529,19 +554,19 @@ class CaptureWindow:
                                      lambda size,bold=False:cute_font(self.win,size,bold),
                                      self.open_obsidian,ASSETS,self.paper_tile)
         if view=='archive' and self.archive_art is None:
-            self.archive_art=(self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True),
-                              self.design_image('921',(62,62),mirror=True))
+            self.archive_art=(self.design_image('902',(50,101),(2.0177,1,-.5265,0),mirror=True),
+                              self.design_image('921',(48,48),mirror=True))
         if view=='final' and self.final_art is None:
             self.final_art=self.make_art(self.paper,self.design_image('917',(160,158)),160,158,
                                          ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
         self.view=view
-        self.paper.pack_configure(padx=(66,112) if view=='archive' else 24)
+        self.paper.pack_configure(padx=58 if view=='archive' else 24)
         self.draw_banner()
         self.win.after_idle(self.paint_paper)
         self.memo_footer.pack_forget()
         if self.final_art:
             self.final_art.place_forget()
-        self.page.pack_configure(padx=(2,12) if view=='archive' else 36,
+        self.page.pack_configure(padx=2 if view=='archive' else 36,
                                  pady=(24,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
             if page is None:
