@@ -60,23 +60,28 @@ class ProjectTagDialog(simpledialog.Dialog):
         super().__init__(parent,'새 프로젝트 태그')
 
     def body(self,master):
-        self.configure(bg=LEMON)
-        master.configure(bg=CREAM,highlightbackground=EDGE,highlightthickness=1,padx=16,pady=12)
-        tk.Label(master,text='프로젝트 이름',bg=CREAM,fg=BROWN,
-                 font=cute_font(self,12,True)).pack(anchor='w')
-        self.name=tk.Entry(master,width=30,bg='white',fg=BROWN,relief='flat',
+        self.overrideredirect(True)
+        self.configure(bg=CREAM,highlightbackground=EDGE,highlightthickness=1)
+        master.configure(bg=CREAM,padx=7,pady=2)
+        heading=tk.Frame(master,bg=CREAM)
+        heading.pack(fill='x')
+        tk.Label(heading,text='새 프로젝트 태그',bg=CREAM,fg=BROWN,
+                 font=cute_font(self,10,True)).pack(side='left')
+        tk.Button(heading,text='×',command=self.cancel,bg=CREAM,fg=BROWN,
+                  relief='flat',font=cute_font(self,11),padx=4,pady=0).pack(side='right')
+        self.name=tk.Entry(master,width=23,bg='white',fg=BROWN,relief='flat',
                            highlightthickness=1,highlightbackground=EDGE,font=cute_font(self,11))
-        self.name.pack(fill='x',pady=(7,0),ipady=6)
+        self.name.pack(fill='x',pady=(4,0),ipady=3)
         self.error=tk.Label(master,bg=CREAM,fg='#994e44',wraplength=275,
                             justify='left',font=cute_font(self,9))
         return self.name
 
     def buttonbox(self):
-        actions=tk.Frame(self,bg=LEMON)
-        actions.pack(fill='x',padx=12,pady=(3,10))
+        actions=tk.Frame(self,bg=CREAM)
+        actions.pack(fill='x',padx=12,pady=(0,8))
         for text,command,color in (('추가',self.ok,'#ffd567'),('취소',self.cancel,CREAM)):
             tk.Button(actions,text=text,command=command,bg=color,fg=BROWN,relief='flat',
-                      cursor='hand2',font=cute_font(self,10,True),padx=15,pady=5).pack(side='right',padx=(6,0))
+                      cursor='hand2',font=cute_font(self,9,True),padx=9,pady=2).pack(side='right',padx=(5,0))
         self.bind('<Return>',self.ok)
         self.bind('<Escape>',self.cancel)
 
@@ -188,7 +193,9 @@ class CaptureWindow:
         self._build_memo()
         self._build_final()
         self._build_archive()
-        self.calendar=DiaryBoard(self.page,lambda:self.app.store,lambda size:cute_font(self.win,size),self.open_obsidian)
+        self.calendar=DiaryBoard(self.page,lambda:self.app.store,
+                                 lambda size,bold=False:cute_font(self.win,size,bold),
+                                 self.open_obsidian,ASSETS,self.paper_tile)
         self.action_row=tk.Frame(paper,bg=PAPER,pady=6)
         self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
@@ -397,7 +404,7 @@ class CaptureWindow:
                  font=cute_font(self.win,12,True)).pack(anchor='w',pady=(0,7))
         tag_row=tk.Frame(self.memo_page,bg=PAPER)
         tag_row.pack(fill='x')
-        self.button(tag_row,'+ 새 태그',self.new_tag,'#c5ffba').pack(side='left',padx=(0,8),pady=5)
+        self.button(tag_row,'+ 새 태그',self.new_tag,'#ffefae').pack(side='left',padx=(0,8),pady=5)
         tk.Frame(tag_row,bg=EDGE,width=1).pack(side='left',fill='y',pady=10,padx=(0,8))
         chips=tk.Canvas(tag_row,height=48,bg=PAPER,highlightthickness=0)
         chips.pack(fill='x')
