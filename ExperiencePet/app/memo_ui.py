@@ -6,12 +6,13 @@ claims to receive its messages automatically without an API integration.
 from __future__ import annotations
 
 import os
+from math import sin
 from pathlib import Path
 import sys
 import uuid
 import tkinter as tk
 from tkinter import messagebox, simpledialog
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
 
 from diary_board import DiaryBoard
 from experience_format import normalize, history, markdown_blocks, obsidian_uri
@@ -161,6 +162,7 @@ class CaptureWindow:
             banner.create_image(center-280,-6,image=self.cover_face,anchor='nw')
             banner.create_image(center+152,58,image=self.cover_friend,anchor='nw')
             banner.create_text(center,66,text=title,font=font,fill=BROWN)
+            self.draw_paper_edge(banner,event.width,event.height)
 
         banner.bind('<Configure>',draw_banner)
         self.tabs={}
@@ -169,8 +171,8 @@ class CaptureWindow:
             btn.configure(activebackground=color)
             btn.place(x=66+109*len(self.tabs),y=121,width=100,height=28)
             self.tabs[key]=btn
-        paper=tk.Frame(cover,bg=PAPER,highlightbackground=EDGE,highlightthickness=2)
-        paper.pack(fill='both',expand=True,padx=19,pady=(146,12))
+        paper=tk.Frame(cover,bg=PAPER)
+        paper.pack(fill='both',expand=True,padx=24,pady=(150,17))
         backing=tk.Canvas(paper,bg=PAPER,highlightthickness=0)
         backing.place(x=0,y=0,relwidth=1,relheight=1)
         self.paper_tile=self.design_image('906', (274,322), (1,1.4811,0,-.4811), opacity=.4)
@@ -186,7 +188,7 @@ class CaptureWindow:
 
         backing.bind('<Configure>',paint_paper)
         self.page=tk.Frame(paper,bg=PAPER)
-        self.page.pack(fill='both',expand=True,padx=39,pady=(20,8))
+        self.page.pack(fill='both',expand=True,padx=36,pady=(24,8))
         self.memo_page=tk.Frame(self.page,bg='#fffdf5')
         self.final_page=tk.Frame(self.page,bg='#fffdf5')
         self.archive_page=tk.Frame(self.page,bg='#fffdf5')
@@ -200,8 +202,9 @@ class CaptureWindow:
         self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
         self.action.pack(side='right')
-        tk.Label(self.action_row,textvariable=self.status,bg=PAPER,fg=BROWN,
-                 wraplength=310,justify='left',font=cute_font(self.win,9)).pack(side='left')
+        self.status_label=tk.Label(self.action_row,textvariable=self.status,bg=PAPER,fg=BROWN,
+                                   wraplength=310,justify='left',font=cute_font(self.win,9))
+        self.status_label.pack(side='left')
         self.project_var.trace_add('write',lambda *_:self.schedule_save())
         self.memo_footer=tk.Canvas(paper,bg=PAPER,height=112,highlightthickness=0)
         self.project_colors={}
@@ -210,7 +213,48 @@ class CaptureWindow:
             self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64, trim=True),
         )
         self.memo_footer.bind('<Configure>',self.draw_memo_footer)
+        self.final_art=self.make_art(paper,self.design_image('917',(147,145)),147,145,
+                                     ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
+        self.archive_lower_art=self.make_art(paper,self.design_image('921',(105,105),mirror=True),78,105)
+        self.archive_upper_art=self.make_art(paper,self.design_image('902',(100,218),(2.0177,1,-.5265,0),
+                                                                  mirror=True),83,218)
         self.select_view('memo')
+
+    def draw_paper_edge(self,canvas,width,height):
+        left,top,right,bottom=19,145,width-19,height-12
+        points=[]
+        for x in range(left+10,right-9,5):
+            points.extend((x,top+sin(x*1.63)*1.5))
+        for y in range(top+10,bottom-9,5):
+            points.extend((right+sin(y*1.63)*1.5,y))
+        for x in range(right-10,left+9,-5):
+            points.extend((x,bottom+sin(x*1.63)*1.5))
+        for y in range(bottom-10,top+9,-5):
+            points.extend((left+sin(y*1.63)*1.5,y))
+        if points:
+            canvas.create_polygon(points,smooth=True,splinesteps=8,fill=PAPER,outline=EDGE,width=3)
+
+    def make_art(self,parent,image,width,height,surfaces=()):
+        art=tk.Canvas(parent,width=width,height=height,bg=PAPER,highlightthickness=0)
+
+        def paint(_):
+            art.delete('all')
+            left=-(art.winfo_x()%274)
+            top=-(art.winfo_y()%322)
+            for x in range(left,width,274):
+                for y in range(top,height,322):
+                    art.create_image(x,y,image=self.paper_tile,anchor='nw')
+            for widget,fill,outline in surfaces:
+                x=widget.winfo_rootx()-art.winfo_rootx()
+                y=widget.winfo_rooty()-art.winfo_rooty()
+                art.create_rectangle(x,y,x+widget.winfo_width(),y+widget.winfo_height(),
+                                     fill=fill,outline=outline)
+            art.create_image(width/2,height,image=image,anchor='s')
+
+        art.bind('<Configure>',paint)
+        for widget,_,_ in surfaces:
+            widget.bind('<Configure>',lambda event: art.after_idle(lambda:paint(event) if art.winfo_ismapped() else None),add='+')
+        return art
 
     def draw_memo_footer(self, *_):
         footer=self.memo_footer
@@ -220,8 +264,8 @@ class CaptureWindow:
         for x in range(0,width,274):
             footer.create_image(x,grid_y,image=self.paper_tile,anchor='nw')
             footer.create_image(x,grid_y+322,image=self.paper_tile,anchor='nw')
-        footer.create_rectangle(39,-1,width-40,height-12,fill=CREAM,outline='')
-        footer.create_line(39,0,39,height-12,width-40,height-12,width-40,0,fill=EDGE)
+        footer.create_rectangle(36,-1,width-37,height-12,fill=CREAM,outline='')
+        footer.create_line(36,0,36,height-12,width-37,height-12,width-37,0,fill=EDGE)
         footer.create_text(63,16,text='오늘의 메모',font=cute_font(self.win,12,True),
                            fill=BROWN,anchor='w')
         project=self.project_var.get().strip()
@@ -236,7 +280,7 @@ class CaptureWindow:
         footer.create_image(3,height-3,image=self.memo_badges[0],anchor='sw')
         footer.create_image(width-3,height-3,image=self.memo_badges[1],anchor='se')
 
-    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False):
+    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False, mirror=False):
         width,height=size
         scale_x,scale_y,offset_x,offset_y=crop
         with Image.open(ASSETS/f'figma_{asset}.png') as source:
@@ -246,6 +290,8 @@ class CaptureWindow:
         result.paste(scaled,(round(width*offset_x),round(height*offset_y)))
         if rotation:
             result=result.rotate(-rotation,Image.Resampling.BICUBIC,expand=True)
+        if mirror:
+            result=ImageOps.mirror(result)
         if opacity<1:
             result.putalpha(result.getchannel('A').point(lambda alpha:round(alpha*opacity)))
         if trim:
@@ -259,24 +305,20 @@ class CaptureWindow:
         self.reader_tables=[]
         self.library_project=tk.StringVar(value='전체 프로젝트')
         self.filter_button=tk.Menubutton(self.archive_page,textvariable=self.library_project,
-                              bg='#fdf5e4',fg=BROWN,relief='flat',padx=12,pady=6,cursor='hand2',
-                              font=cute_font(self.win,10))
+                              bg=PAPER,fg=BROWN,relief='flat',padx=0,pady=3,cursor='hand2',
+                              font=cute_font(self.win,11,True))
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False)
         self.filter_button.configure(menu=self.filters)
-        self.records=tk.Listbox(self.archive_page,height=5,exportselection=False,
-                        bg='#fff5d9',fg=BROWN,bd=0,highlightthickness=0,
-                        selectbackground='#f8cc78',selectforeground=BROWN,font=cute_font(self.win,11))
-        self.records.pack(fill='x',pady=8)
+        self.records=tk.Listbox(self.archive_page,height=5,exportselection=False,activestyle='none',
+                        bg='#fff5d9',fg=BROWN,bd=0,highlightthickness=1,highlightbackground=EDGE,
+                        selectbackground='#f8cc78',selectforeground=BROWN,font=cute_font(self.win,10,True))
+        self.records.pack(fill='x',pady=(4,9),padx=(0,40))
         self.records.bind('<<ListboxSelect>>',lambda e:self.read_record())
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
-        scroll=tk.Scrollbar(reading_area)
-        scroll.pack(side='right',fill='y')
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
                         bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11))
-        self.reader.configure(yscrollcommand=scroll.set)
-        scroll.configure(command=self.reader.yview)
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
         self.reader.pack(fill='both',expand=True)
         self.reader.bind('<Configure>',self.resize_reader_tables)
@@ -320,6 +362,8 @@ class CaptureWindow:
             table.destroy()
         self.reader_tables.clear()
         self.reader.delete('1.0','end')
+        if pick and not body.startswith('# '):
+            self.reader.insert('end',self.rows[pick[0]][1]+'\n','heading')
         for block in markdown_blocks(body):
             if isinstance(block,list):
                 self.insert_reader_table(block)
@@ -369,7 +413,9 @@ class CaptureWindow:
             return
         self.view=view
         self.memo_footer.pack_forget()
-        self.page.pack_configure(pady=(20,0 if view=='memo' else 8))
+        for art in (self.final_art,self.archive_lower_art,self.archive_upper_art):
+            art.place_forget()
+        self.page.pack_configure(pady=(24,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
             page.pack_forget()
             self.tabs[k].place_configure(y=108 if k==view else 121,height=38 if k==view else 25)
@@ -385,12 +431,18 @@ class CaptureWindow:
         if not self.action_row.winfo_manager():
             self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action.pack(side='right')
+        self.status_label.configure(wraplength=205 if view=='final' else 310)
+        self.status_label.pack_configure(padx=(115,0) if view=='final' else (0,0))
         label,fn=actions[view]
         self.action.configure(text=label,command=fn)
         if view=='memo':
             self.memo_footer.pack(side='bottom',fill='x',before=self.page)
             self.redraw_tags()
+        if view=='final':
+            self.final_art.place(x=-7,rely=1,y=1,anchor='sw')
         if view=='archive':
+            self.archive_lower_art.place(x=-9,rely=1,y=1,anchor='sw')
+            self.archive_upper_art.place(relx=1,x=6,y=0,anchor='ne')
             self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
 
@@ -461,25 +513,30 @@ class CaptureWindow:
             self.project_var.set(dialog.result)
 
     def _build_final(self):
-        header=tk.Frame(self.final_page,bg='#fffdf5')
-        header.pack(fill='x',pady=(0,7))
-        tk.Label(header,text='경험 제목',bg='#fffdf5',fg=BROWN,
+        header=tk.Frame(self.final_page,bg=PAPER)
+        header.pack(fill='x',pady=(0,21))
+        tk.Label(header,text='경험 제목',bg=PAPER,fg=BROWN,
                  font=cute_font(self.win,12,True)).pack(anchor='w')
-        self._entry(header,self.title_var).pack(fill='x',ipady=6,pady=(7,0))
-        tk.Label(self.final_page,text='ChatGPT가 정리한 Markdown을 검토한 뒤 저장하세요.',
-                 bg='#fffdf5',fg=MUTED,font=cute_font(self.win,9)).pack(anchor='w',pady=(11,5))
+        tk.Entry(header,textvariable=self.title_var,bg=PAPER,fg=BROWN,relief='flat',
+                 bd=0,highlightthickness=0,insertbackground=BROWN,
+                 font=cute_font(self.win,16,True)).pack(fill='x',padx=(12,0),ipady=5,pady=(7,0))
+        self.title_rule=ImageTk.PhotoImage(file=str(ASSETS/'figma_title_rule.png'),master=self.win)
+        rule=tk.Canvas(header,bg=PAPER,height=self.title_rule.height(),highlightthickness=0)
+        rule.pack(fill='x')
+        rule.create_image(0,0,image=self.title_rule,anchor='nw')
         sheet=tk.Frame(self.final_page,bg=CREAM,highlightbackground=EDGE,highlightthickness=1)
+        self.final_sheet=sheet
         sheet.pack(fill='both',expand=True)
         self.preview=tk.Text(sheet,wrap='word',bg='white',fg=BROWN,relief='flat',bd=0,highlightthickness=0,
                   insertbackground=BROWN,font=cute_font(self.win,10),padx=12,pady=9,
                   undo=True)
-        self.preview.pack(fill='both',expand=True,padx=23,pady=(19,8))
         r=tk.Frame(sheet,bg=CREAM)
-        r.pack(fill='x',padx=23,pady=(0,7))
+        r.pack(side='bottom',fill='x',padx=23,pady=(0,7))
         tk.Button(r,text='정리본 붙여넣기',command=self.paste_from_clipboard,
-                bg='#ffe9b7',fg=BROWN,relief='flat',font=cute_font(self.win,9,True)).pack(side='left')
+                bg='#ffe9b7',fg=BROWN,relief='flat',font=cute_font(self.win,9,True)).pack(side='right',padx=(7,0))
         tk.Button(r,text='빈 양식',command=self.make_template,
                 bg='#f9ecd9',fg=BROWN,relief='flat',font=cute_font(self.win,9)).pack(side='right')
+        self.preview.pack(fill='both',expand=True,padx=23,pady=(19,8))
 
     def changed(self,event=None):
         if self.raw.edit_modified():

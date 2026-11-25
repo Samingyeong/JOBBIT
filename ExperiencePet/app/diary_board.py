@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 
-from daily_tasks import FOLDER, add_task, task_path, tasks_for, toggle_task
+from daily_tasks import FOLDER, add_task, task_path, tasks_for, update_task
 from experience_format import dated_history, note_paths, read_note
 
 PAPER = '#fffdf5'
@@ -83,7 +83,8 @@ class DiaryBoard(tk.Frame):
         notes.grid(row=0,column=1,sticky='nsew',padx=(15,0))
         todo = tk.Frame(panels, bg=PAPER)
         todo.grid(row=0,column=0,sticky='nsew',padx=(0,8))
-        self.notes = self.make_list(notes, '완성 경험 · 원본 기록')
+        self.notes_heading=tk.StringVar(value='완성 경험')
+        self.notes = self.make_list(notes,self.notes_heading)
         self.notes.bind('<Double-Button-1>', self.open_note)
         self.notes.bind('<Return>', self.open_note)
         tk.Label(todo,text='체크리스트',bg=PAPER,fg=INK,font=font(11,True)).pack(anchor='w')
@@ -117,11 +118,12 @@ class DiaryBoard(tk.Frame):
         return ImageTk.PhotoImage(art,master=self)
 
     def make_list(self, parent, label):
-        tk.Label(parent,text=label,bg=PAPER,fg=INK,font=self.font(11,True)).pack(anchor='w')
-        listing=tk.Listbox(parent,height=2,bg=PAPER,fg=INK,selectbackground='#ffefae',
+        tk.Label(parent,textvariable=label,bg=PAPER,fg=INK,font=self.font(11,True)).pack(anchor='w')
+        listing=tk.Listbox(parent,height=2,bg=CREAM,fg=INK,selectbackground='#f8cb74',
                            selectforeground=INK,exportselection=False,font=self.font(10),
-                           borderwidth=0,highlightthickness=0)
-        listing.pack(fill='both', expand=True)
+                           borderwidth=0,highlightthickness=1,highlightbackground='#d5bea0',
+                           highlightcolor=EDGE,activestyle='none')
+        listing.pack(fill='both',expand=True,pady=(4,0))
         return listing
 
     def fit_calendar(self, event):
@@ -142,7 +144,15 @@ class DiaryBoard(tk.Frame):
         store = self.store()
         self.days = experiences_by_day(store.root) if store else {}
         self.diaries = diaries_by_day(store.root) if store else {}
-        self.todo_days = {p.stem for p in (store.root / FOLDER).glob('*.md')} if store else set()
+        self.todo_days=set()
+        if store:
+            for path in (store.root/FOLDER).glob('*.md'):
+                try:
+                    day=date.fromisoformat(path.stem)
+                    if tasks_for(task_path(store.root,day)):
+                        self.todo_days.add(path.stem)
+                except (OSError,ValueError):
+                    continue
         self.choose(self.selected)
 
     def grid(self):
@@ -194,10 +204,15 @@ class DiaryBoard(tk.Frame):
         self.notes.delete(0, 'end')
         self.note_items = [*self.days.get(day, []),
                            *((f'[원본] {title}',path) for title,path in self.diaries.get(day, []))]
-        for title,_ in self.note_items:
-            self.notes.insert('end',title)
+        completed=len(self.days.get(day,[]))
+        self.notes_heading.set(f'완성 경험 ({completed})')
+        for index,(title,_) in enumerate(self.note_items):
+            self.notes.insert('end',f'  {index+1:02d}   {title}')
+            self.notes.itemconfigure(index,background=CREAM if index%2==0 else '#fffaf0')
         if not self.note_items:
-            self.notes.insert('end', '이 날짜에 저장된 노트가 없어요.')
+            self.notes.insert('end','  이 날짜에 저장된 노트가 없어요.')
+        else:
+            self.notes.selection_set(0)
         if not self.note_items and self.winfo_width()>=560 and self.winfo_height()>=402:
             self.badge.place(relx=1,rely=1,anchor='se')
         else:
@@ -239,12 +254,13 @@ class DiaryBoard(tk.Frame):
                                fill='#6d675e',font=self.font(9))
         for _,done,text in self.tasks:
             label=canvas.create_text(43,top+6,text=text,anchor='nw',fill=INK,font=self.font(10),
-                                     width=max(24,w-49))
+                                     width=max(24,w-70))
             bottom=max(top+32,canvas.bbox(label)[3]+6)
             y=top+16
             self.rounded(canvas,12,y-9,30,y+9,4,'#ffd567' if done else 'white','#b48c3c' if done else '#8b8376')
             if done:
                 canvas.create_line(16,y,20,y+4,27,y-5,fill='white',width=2)
+            canvas.create_text(w-13,y,text='×',fill='#994e44',font=self.font(12,True))
             self.task_bounds.append((top,bottom))
             top=bottom
         total=max(h,top)
@@ -262,7 +278,9 @@ class DiaryBoard(tk.Frame):
         y=self.todo.canvasy(event.y)
         for index,(top,bottom) in enumerate(self.task_bounds):
             if top<=y<bottom:
-                self.toggle_task_at(index)
+                remove=event.x>=self.todo.winfo_width()-28
+                if not remove or messagebox.askyesno('할 일 삭제','이 할 일을 삭제할까요?',parent=self):
+                    self.toggle_task_at(index,remove=remove)
                 break
 
     def open_note(self, event=None):
@@ -285,11 +303,14 @@ class DiaryBoard(tk.Frame):
         self.refresh_tasks()
         self.draw()
 
-    def toggle_task_at(self,index):
+    def toggle_task_at(self,index,*,remove=False):
         store=self.store()
         if store:
             try:
-                toggle_task(task_path(store.root,self.selected),self.tasks[index])
+                update_task(task_path(store.root,self.selected),self.tasks[index],remove=remove)
             except (OSError, ValueError) as exc:
                 messagebox.showerror('할 일 저장', str(exc), parent=self)
             self.refresh_tasks()
+            if not self.tasks:
+                self.todo_days.discard(self.selected.isoformat())
+            self.draw()

@@ -57,11 +57,14 @@ def add_task(path, day, text):
     write_lines(path,lines)
 
 
-def toggle_task(path, task):
+def update_task(path, task, *, remove=False):
     index,done,text = task
     lines = read_lines(path)
     match = CHECKBOX.fullmatch(lines[index]) if index<len(lines) else None
     if not match or (match[1]!=' ',match[2]) != (done,text):
         raise ValueError('Obsidian에서 변경된 할 일을 다시 선택해 주세요.')
-    lines[index] = f"- [{' ' if done else 'x'}] {text}{match[3] or ''}"
+    if remove:
+        del lines[index]
+    else:
+        lines[index] = f"- [{' ' if done else 'x'}] {text}{match[3] or ''}"
     write_lines(path,lines)
