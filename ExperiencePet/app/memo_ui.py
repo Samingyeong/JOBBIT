@@ -54,6 +54,42 @@ def roundrect(canvas, x1,y1,x2,y2,r, **kw):
     ], smooth=True, splinesteps=12, **kw)
 
 
+class ProjectTagDialog(simpledialog.Dialog):
+    def __init__(self,parent,add_project):
+        self.add_project=add_project
+        super().__init__(parent,'새 프로젝트 태그')
+
+    def body(self,master):
+        self.configure(bg=LEMON)
+        master.configure(bg=CREAM,highlightbackground=EDGE,highlightthickness=1,padx=16,pady=12)
+        tk.Label(master,text='프로젝트 이름',bg=CREAM,fg=BROWN,
+                 font=cute_font(self,12,True)).pack(anchor='w')
+        self.name=tk.Entry(master,width=30,bg='white',fg=BROWN,relief='flat',
+                           highlightthickness=1,highlightbackground=EDGE,font=cute_font(self,11))
+        self.name.pack(fill='x',pady=(7,0),ipady=6)
+        self.error=tk.Label(master,bg=CREAM,fg='#994e44',wraplength=275,
+                            justify='left',font=cute_font(self,9))
+        return self.name
+
+    def buttonbox(self):
+        actions=tk.Frame(self,bg=LEMON)
+        actions.pack(fill='x',padx=12,pady=(3,10))
+        for text,command,color in (('추가',self.ok,'#ffd567'),('취소',self.cancel,CREAM)):
+            tk.Button(actions,text=text,command=command,bg=color,fg=BROWN,relief='flat',
+                      cursor='hand2',font=cute_font(self,10,True),padx=15,pady=5).pack(side='right',padx=(6,0))
+        self.bind('<Return>',self.ok)
+        self.bind('<Escape>',self.cancel)
+
+    def validate(self):
+        try:
+            self.result=self.add_project(self.name.get())
+        except (ValueError,OSError) as exc:
+            self.error.configure(text=str(exc))
+            self.error.pack(anchor='w',pady=(6,0))
+            return False
+        return True
+
+
 class CaptureWindow:
     WIDTH, HEIGHT=628, 792
 
@@ -359,7 +395,11 @@ class CaptureWindow:
         from tkinter import font as tkfont
         tk.Label(self.memo_page,text='프로젝트 · 동아리',bg='#fffdf5',fg='#31563d',
                  font=cute_font(self.win,12,True)).pack(anchor='w',pady=(0,7))
-        chips=tk.Canvas(self.memo_page,height=48,bg='#fffdf5',highlightthickness=0)
+        tag_row=tk.Frame(self.memo_page,bg=PAPER)
+        tag_row.pack(fill='x')
+        self.button(tag_row,'+ 새 태그',self.new_tag,'#c5ffba').pack(side='left',padx=(0,8),pady=5)
+        tk.Frame(tag_row,bg=EDGE,width=1).pack(side='left',fill='y',pady=10,padx=(0,8))
+        chips=tk.Canvas(tag_row,height=48,bg=PAPER,highlightthickness=0)
         chips.pack(fill='x')
         scroll=tk.Scrollbar(self.memo_page,orient='horizontal',command=chips.xview)
         chips.configure(xscrollcommand=scroll.set)
@@ -370,17 +410,16 @@ class CaptureWindow:
             colors=[('#c5ffba','#37812a'),('#ffbdbd','#ad4848'),('#ffe7ba','#a86727')]
             self.project_colors={name:colors[i%len(colors)] for i,name in enumerate(names)}
             x=3
-            for i,name in enumerate([*names,None]):
-                active=name is not None and self.project_var.get()==name
-                label=('+ 새 태그' if name is None else ('✓ ' if active else '')+name)
+            for i,name in enumerate(names):
+                active=self.project_var.get()==name
+                label=('✓ ' if active else '')+name
                 width=font.measure(label)+22
-                color,border=self.project_colors.get(name,colors[0])
+                color,border=self.project_colors[name]
                 tag='chip'+str(i)
                 roundrect(chips,x,5,x+width,41,8,fill=color,outline=border,width=2 if active else 1,tags=tag)
                 chips.create_text(x+width/2,23,text=label,font=font,fill=BROWN,tags=tag)
                 def choose(e,n=name):
-                    if n is None: self.new_tag()
-                    else: self.project_var.set('' if self.project_var.get()==n else n)
+                    self.project_var.set('' if self.project_var.get()==n else n)
                 chips.tag_bind(tag,'<Button-1>',choose)
                 chips.tag_bind(tag,'<Enter>',lambda e:chips.configure(cursor='hand2'))
                 chips.tag_bind(tag,'<Leave>',lambda e:chips.configure(cursor=''))
@@ -388,7 +427,7 @@ class CaptureWindow:
             self.chip_font=font
             chips.configure(scrollregion=(0,0,x,48))
             if x>chips.winfo_width() and not scroll.winfo_manager():
-                scroll.pack(fill='x',after=chips)
+                scroll.pack(fill='x',after=tag_row)
             elif x<=chips.winfo_width() and scroll.winfo_manager():
                 scroll.pack_forget()
             self.draw_memo_footer()
@@ -410,12 +449,9 @@ class CaptureWindow:
         if not self.app.store:
             messagebox.showinfo('프로젝트', '설정에서 Vault를 선택해 주세요.', parent=self.win)
             return
-        name = simpledialog.askstring('새 프로젝트 태그', '프로젝트 이름', parent=self.win)
-        if name:
-            try:
-                self.project_var.set(self.app.store.add_project(name))
-            except (ValueError, OSError) as exc:
-                messagebox.showerror('태그 추가', str(exc), parent=self.win)
+        dialog=ProjectTagDialog(self.win,self.app.store.add_project)
+        if dialog.result:
+            self.project_var.set(dialog.result)
 
     def _build_final(self):
         header=tk.Frame(self.final_page,bg='#fffdf5')
