@@ -8,7 +8,7 @@ from tkinter import messagebox
 from PIL import Image, ImageTk
 
 from daily_tasks import FOLDER, add_task, task_path, tasks_for, update_task
-from experience_format import dated_history, note_paths, read_note
+from experience_format import dated_history, read_note
 from note_rows import NoteRows, rounded
 
 PAPER = '#fffdf5'
@@ -17,42 +17,40 @@ INK = '#20201e'
 EDGE = '#856341'
 
 
-def experiences_by_day(root,diaries):
+def original_date(root,stem):
+    roots=[root]
+    if root.name=='Career_Experience_Vault' and (root.parent/'.obsidian').is_dir():
+        roots.append(root.parent)
+    for base in roots:
+        path=base/'03 Daily Logs'/f'{stem.removesuffix(".md")}.md'
+        try:
+            if path.resolve()!=path:
+                continue
+            meta,_=read_note(path)
+            stamp=re.search(r'^created:[ \t]*["\x27]?(\d{4}-\d\d-\d\d)',meta,re.M)
+            stamp=stamp or re.match(r'(\d{4}-\d\d-\d\d)',path.name)
+            if stamp:
+                return date.fromisoformat(stamp[1])
+        except (OSError,ValueError):
+            continue
+    return None
+
+
+def experiences_by_day(root):
     result = defaultdict(list)
-    source_dates={(source_path.parent.name,source_path.stem):day
-                  for day,entries in diaries.items() for _,source_path in entries}
-    linked=set()
     for _,title,path,body,meta in dated_history(root):
         stamp = re.search(r'^(?:created|date):[ \t]*["\x27]?(\d{4}-\d\d-\d\d)', meta, re.M)
         stamp = stamp or re.match(r'(\d{4}-\d\d-\d\d)', path.name)
-        source=re.search(r'^> 원본:[ \t]*\[\[03 Daily Logs/([^|\]\n]+)',body,re.M)
-        key=('03 Daily Logs',source[1].removesuffix('.md')) if source else None
-        if key in source_dates:
-            result[source_dates[key]].append((title,path))
-            linked.add(key)
+        source=re.search(r'^> 원본:[ \t]*\[\[03 Daily Logs/([^/\\|\]\n]+)',body,re.M)
+        saved_date=original_date(root,source[1]) if source else None
+        if saved_date:
+            result[saved_date].append((title,path))
             continue
         try:
             day = date.fromisoformat(stamp[1]) if stamp else datetime.fromtimestamp(path.stat().st_mtime).date()
         except (ValueError, OSError):
             continue
         result[day].append((title, path))
-    return result,linked
-
-
-def diaries_by_day(root):
-    result = defaultdict(list)
-    for path in note_paths(root, '03 Daily Logs'):
-        try:
-            meta,body = read_note(path)
-            stamp = re.search(r'^created:[ \t]*["\x27]?(\d{4}-\d\d-\d\d)',meta,re.M)
-            stamp = stamp or re.match(r'(\d{4}-\d\d-\d\d)',path.name)
-            if stamp:
-                memo=body.partition('## 원본 메모')[2].partition('## 후속 정리')[0].strip()
-                label=next((line.strip() for line in memo.splitlines()
-                            if line.strip() and not line.lstrip().startswith('#')),path.stem)
-                result[date.fromisoformat(stamp[1])].append((label,path))
-        except (OSError, ValueError):
-            continue
     return result
 
 
@@ -63,7 +61,6 @@ class DiaryBoard(tk.Frame):
         self.selected = date.today()
         self.month = self.selected.replace(day=1)
         self.days = {}
-        self.diaries = {}
         self.note_items = []
         self.todo_days = set()
         self.tasks = []
@@ -144,11 +141,7 @@ class DiaryBoard(tk.Frame):
 
     def refresh(self):
         store = self.store()
-        self.diaries = diaries_by_day(store.root) if store else {}
-        self.days,linked=experiences_by_day(store.root,self.diaries) if store else ({},set())
-        self.diaries={day:remaining for day,entries in self.diaries.items()
-                      if (remaining:=[(title,path) for title,path in entries
-                                      if (path.parent.name,path.stem) not in linked])}
+        self.days=experiences_by_day(store.root) if store else {}
         self.todo_days=set()
         if store:
             for path in (store.root/FOLDER).glob('*.md'):
@@ -178,7 +171,7 @@ class DiaryBoard(tk.Frame):
                     continue
                 day = self.month.replace(day=number)
                 x,y=4+(col+.5)*width,37+(row+.5)*height
-                marked=day in self.days or day in self.diaries or day.isoformat() in self.todo_days
+                marked=day in self.days or day.isoformat() in self.todo_days
                 spacious=height>=32 and width>=54
                 if day==self.selected:
                     radius=min(height*.41,19)
@@ -206,12 +199,11 @@ class DiaryBoard(tk.Frame):
             self.entry.delete(0, 'end')
         self.selected = day
         self.draw()
-        self.note_items=[*self.days.get(day,[]),*self.diaries.get(day,[])]
-        completed=len(self.days.get(day,[]))
-        self.notes_heading.set(f'완성 경험 ({completed})')
+        self.note_items=self.days.get(day,[])
+        self.notes_heading.set(f'완성 경험 ({len(self.note_items)})')
         self.notes.art=None if self.note_items else self.corner
         self.notes.set_rows([f'{i+1:02d}   {title}' for i,(title,_) in enumerate(self.note_items)],
-                            placeholder='이 날짜에 저장된 노트가 없어요.')
+                            placeholder='이 날짜에 저장된 완성 경험이 없어요.')
         self.refresh_tasks()
 
     def refresh_tasks(self):
