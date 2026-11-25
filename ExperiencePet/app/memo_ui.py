@@ -16,6 +16,7 @@ from PIL import Image, ImageOps, ImageTk
 
 from diary_board import DiaryBoard
 from experience_format import normalize, history, markdown_blocks, obsidian_uri
+from note_rows import NoteRows, rounded
 from vault import APP_DATA, make_gpt_prompt
 from chatgpt_desktop import open_interview
 from winbridge import launch_chatgpt
@@ -144,33 +145,45 @@ class CaptureWindow:
         self.pattern_left=self.design_image('911', (304,528), (1.1604,1.1888,-.1494,-.0863))
         self.pattern_right=self.design_image('911', (333,448), (1,1.3204,0,-.0959), 173.47)
 
-        def draw_banner(event):
-            center=event.width/2
+        tabs=(('memo','오늘 이야기','#f95e64'),('final','완성노트','#ffd768'),
+              ('archive','경험모음','#81e66e'),('calendar','일기달력','#6775f7'))
+
+        def draw_banner(event=None):
+            width,height=banner.winfo_width(),banner.winfo_height()
+            if width<=1:
+                return
+            center=width/2
             banner.delete('all')
             banner.create_image(-193,-41,image=self.pattern_wide,anchor='nw')
-            banner.create_image(event.width-360,-41,image=self.pattern_wide,anchor='nw')
-            banner.create_image(71,event.height-147,image=self.pattern_wide,anchor='nw')
+            banner.create_image(width-360,-41,image=self.pattern_wide,anchor='nw')
+            banner.create_image(71,height-147,image=self.pattern_wide,anchor='nw')
             banner.create_image(-86,242,image=self.pattern_left,anchor='nw')
-            banner.create_image(event.width-335,205,image=self.pattern_right,anchor='nw')
+            banner.create_image(width-335,205,image=self.pattern_right,anchor='nw')
             from tkinter.font import Font
             title='짱구의 경험 기록장'
             font=Font(root=self.win,font=cute_font(self.win,26,True))
-            max_width=max(event.width-222,150)
+            max_width=max(width-222,150)
             while font.measure(title)>max_width and font.cget('size')>10:
                 font.configure(size=font.cget('size')-1)
             self.banner_font=font
             banner.create_image(center-280,-6,image=self.cover_face,anchor='nw')
             banner.create_image(center+152,58,image=self.cover_friend,anchor='nw')
             banner.create_text(center,66,text=title,font=font,fill=BROWN)
-            self.draw_paper_edge(banner,event.width,event.height)
+            for index,(key,label,color) in enumerate(tabs):
+                x,y=66+109*index,108 if key==self.view else 121
+                shape=rounded(banner,x,y,x+100,158,8,color)
+                banner.itemconfigure(shape,tags=(key,))
+                banner.create_text(x+50,y+(145-y)/2,text=label,tags=(key,),
+                                   font=cute_font(self.win,10,True),fill=BROWN)
+                banner.tag_bind(key,'<Button-1>',lambda _,view=key:self.select_view(view))
+                banner.tag_bind(key,'<Enter>',lambda _:banner.configure(cursor='hand2'))
+                banner.tag_bind(key,'<Leave>',lambda _:banner.configure(cursor=''))
+            self.draw_paper_edge(banner,width,height)
 
         banner.bind('<Configure>',draw_banner)
-        self.tabs={}
-        for key,label,color in [('memo','오늘 이야기','#fa5b60'),('final','완성노트','#ffd567'),('archive','경험모음','#84e36e'),('calendar','일기달력','#6875f5')]:
-            btn=self.button(cover,label,lambda k=key:self.select_view(k),color)
-            btn.configure(activebackground=color)
-            btn.place(x=66+109*len(self.tabs),y=121,width=100,height=28)
-            self.tabs[key]=btn
+        self.draw_banner=draw_banner
+        for index,(key,_,_) in enumerate(tabs,1):
+            self.win.bind(f'<Alt-Key-{index}>',lambda _,view=key:self.select_view(view))
         paper=tk.Frame(cover,bg=PAPER)
         paper.pack(fill='both',expand=True,padx=24,pady=(150,17))
         backing=tk.Canvas(paper,bg=PAPER,highlightthickness=0)
@@ -216,8 +229,6 @@ class CaptureWindow:
         self.final_art=self.make_art(paper,self.design_image('917',(147,145)),147,145,
                                      ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
         self.archive_lower_art=self.make_art(paper,self.design_image('921',(105,105),mirror=True),78,105)
-        self.archive_upper_art=self.make_art(paper,self.design_image('902',(100,218),(2.0177,1,-.5265,0),
-                                                                  mirror=True),83,218)
         self.select_view('memo')
 
     def draw_paper_edge(self,canvas,width,height):
@@ -310,11 +321,10 @@ class CaptureWindow:
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False)
         self.filter_button.configure(menu=self.filters)
-        self.records=tk.Listbox(self.archive_page,height=5,exportselection=False,activestyle='none',
-                        bg='#fff5d9',fg=BROWN,bd=0,highlightthickness=1,highlightbackground=EDGE,
-                        selectbackground='#f8cc78',selectforeground=BROWN,font=cute_font(self.win,10,True))
-        self.records.pack(fill='x',pady=(4,9),padx=(0,40))
-        self.records.bind('<<ListboxSelect>>',lambda e:self.read_record())
+        archive_cast=self.design_image('902',(77,149),(2.0177,1,-.5265,0),mirror=True)
+        self.records=NoteRows(self.archive_page,cute_font(self.win,10,True),height=157,
+                              on_select=self.read_record,on_open=self.open_record,art=archive_cast)
+        self.records.pack(fill='x',pady=(4,9))
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
@@ -335,25 +345,22 @@ class CaptureWindow:
         if state==self.archive_state:
             return
         self.archive_state=state
-        previous=self.records.curselection()
-        previous_path=self.rows[previous[0]][2] if previous else None
+        previous=self.records.selected
+        previous_path=self.rows[previous][2] if previous is not None else None
         self.filters.delete(0,'end')
         for p in ['전체 프로젝트',*sorted(names),'프로젝트 미지정']:
             self.filters.add_command(label=p,command=lambda n=p:self.refresh_archive(n))
         self.rows=[r for r in rows if choice=='전체 프로젝트' or (r[0] or '프로젝트 미지정')==choice]
-        self.records.delete(0,'end')
-        for project,title,*_ in self.rows:
-            self.records.insert('end','  '+title+'   ·   '+(project or '프로젝트 미지정'))
-        if self.rows:
-            index=next((i for i,row in enumerate(self.rows) if row[2]==previous_path),0)
-            self.records.selection_set(index)
-            self.records.see(index)
+        labels=[f'{title} · {project or "프로젝트 미지정"}' for project,title,*_ in self.rows]
+        index=next((i for i,row in enumerate(self.rows) if row[2]==previous_path),0)
+        self.records.set_rows(labels,selected=index,placeholder='저장된 경험이 없어요.')
         self.read_record()
 
     def read_record(self):
-        pick=self.records.curselection()
-        body=self.rows[pick[0]][3] if pick else '이 프로젝트에 저장한 경험이 아직 없어요.'
-        record=(self.rows[pick[0]][2] if pick else None,body)
+        pick=self.records.selected
+        row=self.rows[pick] if pick is not None else None
+        body=row[3] if row else '이 프로젝트에 저장한 경험이 아직 없어요.'
+        record=(row[2] if row else None,body)
         if record==self.rendered_record:
             return
         self.rendered_record=record
@@ -362,8 +369,8 @@ class CaptureWindow:
             table.destroy()
         self.reader_tables.clear()
         self.reader.delete('1.0','end')
-        if pick and not body.startswith('# '):
-            self.reader.insert('end',self.rows[pick[0]][1]+'\n','heading')
+        if row and not body.startswith('# '):
+            self.reader.insert('end',row[1]+'\n','heading')
         for block in markdown_blocks(body):
             if isinstance(block,list):
                 self.insert_reader_table(block)
@@ -398,9 +405,9 @@ class CaptureWindow:
                 label.configure(wraplength=width)
 
     def open_record(self):
-        chosen=self.records.curselection()
-        if chosen:
-            self.open_obsidian(self.rows[chosen[0]][2])
+        chosen=self.records.selected
+        if chosen is not None:
+            self.open_obsidian(self.rows[chosen][2])
 
     def open_obsidian(self,path):
         try:
@@ -412,13 +419,13 @@ class CaptureWindow:
         if self.view==view:
             return
         self.view=view
+        self.draw_banner()
         self.memo_footer.pack_forget()
-        for art in (self.final_art,self.archive_lower_art,self.archive_upper_art):
+        for art in (self.final_art,self.archive_lower_art):
             art.place_forget()
         self.page.pack_configure(pady=(24,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
             page.pack_forget()
-            self.tabs[k].place_configure(y=108 if k==view else 121,height=38 if k==view else 25)
             if k==view:
                 page.pack(fill='both',expand=True)
         actions={'memo':('ChatGPT에서 대화하기',self.send_to_chatgpt),'final':('Obsidian에 저장',self.save_experience),
@@ -442,7 +449,6 @@ class CaptureWindow:
             self.final_art.place(x=-7,rely=1,y=1,anchor='sw')
         if view=='archive':
             self.archive_lower_art.place(x=-9,rely=1,y=1,anchor='sw')
-            self.archive_upper_art.place(relx=1,x=6,y=0,anchor='ne')
             self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
 

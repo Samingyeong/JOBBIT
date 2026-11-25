@@ -9,6 +9,7 @@ from PIL import Image, ImageTk
 
 from daily_tasks import FOLDER, add_task, task_path, tasks_for, update_task
 from experience_format import dated_history, note_paths, read_note
+from note_rows import NoteRows, rounded
 
 PAPER = '#fffdf5'
 CREAM = '#fdf5e4'
@@ -60,7 +61,7 @@ class DiaryBoard(tk.Frame):
         self.face=self.calendar_image(assets,907,(47,35))
         self.small_face=self.calendar_image(assets,907,(19,14))
         self.frog=self.calendar_image(assets,923,(52,57),11.19)
-        self.corner=self.calendar_image(assets,920,(94,108))
+        self.corner=self.calendar_image(assets,920,(72,80))
         bar = tk.Frame(self, bg=PAPER)
         bar.pack(fill='x')
         tk.Button(bar, text='‹', command=lambda: self.shift(-1), relief='flat',
@@ -76,36 +77,39 @@ class DiaryBoard(tk.Frame):
 
         panels = tk.Frame(self, bg=PAPER)
         panels.pack(fill='both', expand=True)
-        panels.columnconfigure(0,weight=3,uniform='panel')
-        panels.columnconfigure(1,weight=2,uniform='panel')
+        panels.columnconfigure(0,weight=2,uniform='panel')
+        panels.columnconfigure(1,weight=3,uniform='panel')
         panels.rowconfigure(0, weight=1)
         notes = tk.Frame(panels, bg=PAPER)
-        notes.grid(row=0,column=1,sticky='nsew',padx=(15,0))
+        notes.grid(row=0,column=1,sticky='nsew',padx=(10,0))
         todo = tk.Frame(panels, bg=PAPER)
         todo.grid(row=0,column=0,sticky='nsew',padx=(0,8))
         self.notes_heading=tk.StringVar(value='완성 경험')
-        self.notes = self.make_list(notes,self.notes_heading)
-        self.notes.bind('<Double-Button-1>', self.open_note)
-        self.notes.bind('<Return>', self.open_note)
+        note_header=tk.Frame(notes,bg=PAPER)
+        note_header.pack(fill='x')
+        tk.Label(note_header,textvariable=self.notes_heading,bg=PAPER,fg=INK,font=font(11,True)).pack(side='left')
+        tk.Button(note_header,text='노트 열기 ↗',command=self.open_note,bg='#ffefae',
+                  activebackground='#ffd567',fg=INK,borderwidth=0,cursor='hand2',
+                  font=font(9,True),padx=7,pady=3).pack(side='right')
+        self.notes=NoteRows(notes,font(10),height=70,on_open=self.open_note,art=self.corner)
+        self.notes.pack(fill='both',expand=True,pady=(5,0))
         tk.Label(todo,text='체크리스트',bg=PAPER,fg=INK,font=font(11,True)).pack(anchor='w')
         self.todo=tk.Canvas(todo,bg=PAPER,highlightthickness=0,height=42,takefocus=True)
         self.todo.pack(fill='both',expand=True)
         self.todo.bind('<Configure>',lambda _:self.draw_tasks())
         self.todo.bind('<MouseWheel>',self.scroll_tasks)
         self.todo.bind('<Button-1>',self.click_task)
-        self.badge=tk.Label(notes,image=self.corner,bg=PAPER,borderwidth=0)
-        self.badge.place(relx=1,rely=1,anchor='se')
-        self.badge.bind('<MouseWheel>',lambda event:self.notes.yview_scroll(-1 if event.delta>0 else 1,'units'))
-        entry_row = tk.Frame(self, bg=PAPER)
-        entry_row.pack(fill='x', pady=(4, 0))
-        tk.Button(entry_row, text='노트 열기', command=self.open_note, bg=CREAM,
-                  relief='flat', font=font(9)).pack(side='left', padx=(0,4))
-        self.entry = tk.Entry(entry_row, font=font(10))
-        self.entry.pack(side='left', fill='x', expand=True)
+        entry_row=tk.Frame(self,bg=CREAM,highlightbackground='#d5bea0',highlightthickness=1)
+        entry_row.pack(side='bottom',fill='x',pady=(7,0),before=panels)
+        tk.Label(entry_row,text='새 할 일',bg=CREAM,fg=INK,font=font(10,True)).pack(side='left',padx=(9,8))
+        self.entry=tk.Entry(entry_row,font=font(10),bg='white',fg=INK,relief='flat',borderwidth=0,
+                            highlightbackground='#e1cfac',highlightcolor=EDGE,highlightthickness=1)
+        self.entry.pack(side='left',fill='x',expand=True,ipady=4,pady=5)
         self.entry.bind('<Return>', self.add)
-        self.add_button = tk.Button(entry_row, text='할 일 추가', command=self.add, bg=CREAM,
-                                    relief='flat', font=font(9))
-        self.add_button.pack(side='left', padx=4)
+        self.add_button=tk.Button(entry_row,text='+ 할 일 추가',command=self.add,bg='#ffdf83',
+                                  activebackground='#ffd567',fg=INK,relief='flat',cursor='hand2',
+                                  font=font(10,True),padx=9,pady=4)
+        self.add_button.pack(side='left',padx=(7,5),pady=5)
         self.bind('<Configure>', self.fit_calendar)
 
     def calendar_image(self,assets,number,size,rotation=0):
@@ -117,23 +121,10 @@ class DiaryBoard(tk.Frame):
         art.thumbnail(size,Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(art,master=self)
 
-    def make_list(self, parent, label):
-        tk.Label(parent,textvariable=label,bg=PAPER,fg=INK,font=self.font(11,True)).pack(anchor='w')
-        listing=tk.Listbox(parent,height=2,bg=CREAM,fg=INK,selectbackground='#f8cb74',
-                           selectforeground=INK,exportselection=False,font=self.font(10),
-                           borderwidth=0,highlightthickness=1,highlightbackground='#d5bea0',
-                           highlightcolor=EDGE,activestyle='none')
-        listing.pack(fill='both',expand=True,pady=(4,0))
-        return listing
-
     def fit_calendar(self, event):
         height = max(112,min(302,int(event.height*.55)))
         if int(self.board.cget('height')) != height:
             self.board.configure(height=height)
-        if event.width>=560 and event.height>=402 and not self.note_items:
-            self.badge.place(relx=1,rely=1,anchor='se')
-        else:
-            self.badge.place_forget()
 
     def shift(self, amount):
         absolute = self.month.year * 12 + self.month.month - 1 + amount
@@ -164,7 +155,7 @@ class DiaryBoard(tk.Frame):
         weeks, width, height = self.grid()
         self.caption.configure(text=f'{self.month.year}년 {self.month.month}월')
         w,h=self.board.winfo_width(),self.board.winfo_height()
-        self.rounded(self.board,3,3,w-3,h-3,11,CREAM,EDGE)
+        rounded(self.board,3,3,w-3,h-3,11,CREAM,EDGE)
         for col,label in enumerate(('SUN','MON','TUE','WED','THU','FRI','SAT')):
             self.board.create_text(4+(col+.5)*width,19,text=label,fill=INK,font=self.font(8,True))
         for row, week in enumerate(weeks):
@@ -201,22 +192,13 @@ class DiaryBoard(tk.Frame):
             self.entry.delete(0, 'end')
         self.selected = day
         self.draw()
-        self.notes.delete(0, 'end')
         self.note_items = [*self.days.get(day, []),
                            *((f'[원본] {title}',path) for title,path in self.diaries.get(day, []))]
         completed=len(self.days.get(day,[]))
         self.notes_heading.set(f'완성 경험 ({completed})')
-        for index,(title,_) in enumerate(self.note_items):
-            self.notes.insert('end',f'  {index+1:02d}   {title}')
-            self.notes.itemconfigure(index,background=CREAM if index%2==0 else '#fffaf0')
-        if not self.note_items:
-            self.notes.insert('end','  이 날짜에 저장된 노트가 없어요.')
-        else:
-            self.notes.selection_set(0)
-        if not self.note_items and self.winfo_width()>=560 and self.winfo_height()>=402:
-            self.badge.place(relx=1,rely=1,anchor='se')
-        else:
-            self.badge.place_forget()
+        self.notes.art=None if self.note_items else self.corner
+        self.notes.set_rows([f'{i+1:02d}   {title}' for i,(title,_) in enumerate(self.note_items)],
+                            placeholder='이 날짜에 저장된 노트가 없어요.')
         self.refresh_tasks()
 
     def refresh_tasks(self):
@@ -237,12 +219,6 @@ class DiaryBoard(tk.Frame):
             self.todo_message=str(exc)
         self.draw_tasks()
 
-    @staticmethod
-    def rounded(canvas,x1,y1,x2,y2,r,fill,outline):
-        canvas.create_polygon(x1+r,y1,x2-r,y1,x2,y1,x2,y1+r,x2,y2-r,x2,y2,
-                              x2-r,y2,x1+r,y2,x1,y2,x1,y2-r,x1,y1+r,x1,y1,
-                              smooth=True,fill=fill,outline=outline)
-
     def draw_tasks(self):
         canvas=self.todo
         canvas.delete('all')
@@ -257,7 +233,7 @@ class DiaryBoard(tk.Frame):
                                      width=max(24,w-70))
             bottom=max(top+32,canvas.bbox(label)[3]+6)
             y=top+16
-            self.rounded(canvas,12,y-9,30,y+9,4,'#ffd567' if done else 'white','#b48c3c' if done else '#8b8376')
+            rounded(canvas,12,y-9,30,y+9,4,'#ffd567' if done else 'white','#b48c3c' if done else '#8b8376')
             if done:
                 canvas.create_line(16,y,20,y+4,27,y-5,fill='white',width=2)
             canvas.create_text(w-13,y,text='×',fill='#994e44',font=self.font(12,True))
@@ -284,10 +260,10 @@ class DiaryBoard(tk.Frame):
                 break
 
     def open_note(self, event=None):
-        picked = self.notes.curselection()
+        picked = self.notes.selected
         items = self.note_items
-        if picked and picked[0] < len(items):
-            self.opener(items[picked[0]][1])
+        if picked is not None and picked<len(items):
+            self.opener(items[picked][1])
 
     def add(self, event=None):
         store, text = self.store(), self.entry.get().strip()
