@@ -6,6 +6,7 @@ claims to receive its messages automatically without an API integration.
 from __future__ import annotations
 
 import os
+from bisect import bisect_right
 from dataclasses import dataclass,replace
 from math import sin
 from pathlib import Path
@@ -16,6 +17,7 @@ from urllib.parse import unquote,urlsplit
 import webbrowser
 import tkinter as tk
 from tkinter import messagebox, simpledialog
+from tkinter.font import Font
 from PIL import Image, ImageOps, ImageTk
 
 from diary_board import DiaryBoard
@@ -244,13 +246,24 @@ class CaptureWindow:
         self._build_final()
         self._build_archive()
         self.calendar=None
-        self.action_row=tk.Frame(paper,bg=PAPER,pady=6)
-        self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
-        self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
+        tk.Frame(paper,bg=PAPER,height=47).pack(side='bottom',fill='x',before=self.page)
+        self.action_row=tk.Frame(cover,bg=PAPER)
+        self.action_row.place(x=164,rely=1,y=-20,relwidth=1,width=-219,height=42,anchor='sw')
+        self.action_row.grid_propagate(False)
+        self.action_row.columnconfigure(0,weight=1)
+        self.action_row.rowconfigure(0,weight=1)
+        action_slot=tk.Frame(self.action_row,bg=PAPER,width=166)
+        action_slot.grid(row=0,column=1,sticky='nsew')
+        action_slot.pack_propagate(False)
+        self.action=self.button(action_slot,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
         self.action.pack(side='right')
-        self.status_label=tk.Label(self.action_row,textvariable=self.status,bg=PAPER,fg=BROWN,
-                                   wraplength=310,justify='left',font=cute_font(self.win,9))
-        self.status_label.pack(side='left')
+        self.status_font=Font(root=self.win,font=cute_font(self.win,9))
+        self.status_label=tk.Label(self.action_row,bg=PAPER,fg=BROWN,justify='left',
+                                   anchor='w',height=2,font=self.status_font)
+        self.status_label.grid(row=0,column=0,sticky='nsew',padx=(0,8))
+        self.status_label.bind('<Configure>',self.update_status_display)
+        self.status.trace_add('write',self.update_status_display)
+        self.status_label.bind('<Button-1>',self.open_status_details)
         self.project_var.trace_add('write',lambda *_:self.schedule_save())
         self.memo_footer=tk.Canvas(paper,bg=PAPER,height=112,highlightthickness=0)
         self.project_colors={}
@@ -261,6 +274,34 @@ class CaptureWindow:
         self.memo_footer.bind('<Configure>',self.draw_memo_footer)
         self.final_art=None
         self.select_view('memo')
+
+    def update_status_display(self,*_):
+        width=self.status_label.winfo_width()-6
+        if width<=0:
+            return
+        remaining=' '.join(self.status.get().split())
+        lines=[]
+        truncated=False
+        for line in range(2):
+            if self.status_font.measure(remaining)<=width:
+                lines.append(remaining)
+                break
+            suffix='…' if line else ''
+            end=bisect_right(range(len(remaining)+1),width,
+                             key=lambda size:self.status_font.measure(remaining[:size]+suffix))-1
+            end=max(1,end)
+            word_break=remaining.rfind(' ',0,end+1)
+            if word_break>=end*.65:
+                end=word_break
+            lines.append(remaining[:end].rstrip()+suffix)
+            remaining=remaining[end:].lstrip()
+            truncated=bool(suffix)
+        self.status_truncated=truncated
+        self.status_label.configure(text='\n'.join(lines),cursor='hand2' if truncated else '')
+
+    def open_status_details(self,event=None):
+        if getattr(self,'status_truncated',False):
+            messagebox.showinfo('저장 안내',self.status.get(),parent=self.win)
 
     def draw_paper_edge(self,canvas,width,height):
         left,top,right,bottom=19,145,width-19,height-12
@@ -652,14 +693,9 @@ class CaptureWindow:
                  'archive':('Obsidian에서 열기',self.open_record)}
         if view=='calendar':
             self.action.pack_forget()
-            self.action_row.pack_forget()
             self.win.after_idle(lambda:self.calendar.refresh() if self.view=='calendar' else None)
             return
-        if not self.action_row.winfo_manager():
-            self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action.pack(side='right')
-        self.status_label.configure(wraplength=205 if view=='final' else 310)
-        self.status_label.pack_configure(padx=(115,0) if view=='final' else (0,0))
         label,fn=actions[view]
         self.action.configure(text=label,command=fn)
         if view=='memo':
