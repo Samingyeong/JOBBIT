@@ -30,6 +30,25 @@ class TestVault(unittest.TestCase):
         b=self.store.autosave(self.store.new_session(),'둘','DED')
         self.assertNotEqual(a,b)
         self.assertTrue(a.exists() and b.exists())
+
+    def test_autosave_recovers_deleted_capture(self):
+        session=self.store.new_session()
+        original=self.store.autosave(session,'기존 메모')
+        original.unlink()
+        recovered=self.store.autosave(session,'복구할 메모')
+        self.assertIn('복구할 메모',recovered.read_text(encoding='utf-8'))
+        self.assertEqual(recovered,self.store.autosave(session,'이어서 저장할 메모'))
+
+    def test_autosave_follows_renamed_capture_without_overwriting_other_note(self):
+        session=self.store.new_session()
+        original=self.store.autosave(session,'기존 메모')
+        renamed=original.rename(original.with_name('이름을 바꾼 메모.md'))
+        original.write_text('별도로 만든 노트',encoding='utf-8')
+        saved=self.store.autosave(session,'이어서 쓴 메모')
+        self.assertEqual(saved,renamed)
+        self.assertIn('이어서 쓴 메모',renamed.read_text(encoding='utf-8'))
+        self.assertEqual(original.read_text(encoding='utf-8'),'별도로 만든 노트')
+
     def test_experience_save_never_overwrites(self):
         a=self.store.save_experience('충돌 예방','## 결과\n충돌 0','키오스크')
         b=self.store.save_experience('충돌 예방','## 결과\n충돌 0','키오스크')

@@ -844,7 +844,13 @@ class CaptureWindow:
             self.source_path=None
         if self.session is None:self.session=self.app.store.new_session()
         try:
+            previous=self.source_path
             self.source_path=self.app.store.autosave(self.session,content,project)
+            if previous is not None and previous!=self.source_path:
+                if self.final_source==previous:
+                    self.final_source=self.source_path
+                if self.pending_source==previous:
+                    self.pending_source=self.source_path
             self.status.set(f'✓ 오늘의 원본 기록 저장: {self.source_path.name}')
             return True
         except Exception as exc:

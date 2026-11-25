@@ -5,6 +5,7 @@ from __future__ import annotations
 from experience_format import normalize, read_note, SECTIONS
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import chain
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import json
 import os
@@ -167,17 +168,49 @@ class VaultStore:
         if session not in self.sessions:
             raise ValueError('존재하지 않는 세션입니다.')
         with self.lock:
-            if not self.sessions[session]:
-                reserved = self.reserve_note('03 Daily Logs', text)
-                self.sessions[session] = reserved.relative_to(self.root).as_posix()
-            path = self._owned_path(self.sessions[session])
-            meta,_=read_note(path)
-            stamp=re.search(r'^created:[ \t]*([^\n]+)',meta,re.M)
-            contents = self.raw_content(text, project, session, stamp[1].strip() if stamp else '')
-            tmp = path.with_name(path.name+'.tmp')
-            tmp.write_text(contents, encoding='utf-8')
-            os.replace(tmp, path)  # atomic update of app-owned daily capture only
+            path,created=self.find_session_capture(session)
+            reserved=path is None
+            if reserved:
+                path=self.reserve_note('03 Daily Logs',text)
+            contents=self.raw_content(text,project,session,created)
+            tmp=path.with_name(f'{path.name}.{uuid.uuid4().hex}.tmp')
+            try:
+                tmp.write_text(contents,encoding='utf-8')
+                os.replace(tmp,path)
+            except OSError:
+                if reserved:
+                    try:
+                        if path.stat().st_size==0:
+                            path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                raise
+            finally:
+                tmp.unlink(missing_ok=True)
+            self.sessions[session]=path.relative_to(self.root).as_posix()
             return path
+
+    def find_session_capture(self,session):
+        relative=self.sessions[session]
+        if not relative:
+            return None,''
+        folder=self.root/'03 Daily Logs'
+        if folder.resolve()!=folder:
+            raise ValueError('원본 기록 폴더가 Vault 바깥을 가리키고 있어요.')
+        known=self.root/relative
+        marker=f'> Experience Pet 자동 기록 · 세션 {session}\n'
+        for path in chain((known,),folder.glob('*.md')):
+            if path.parent!=folder or path.resolve()!=path:
+                continue
+            try:
+                meta,body=read_note(path)
+            except (FileNotFoundError,UnicodeError):
+                continue
+            if marker not in body:
+                continue
+            stamp=re.search(r'^created:[ \t]*([^\n]+)',meta,re.M)
+            return path,stamp[1].strip() if stamp else ''
+        return None,''
 
     def capture_sources(self):
         folder=self.root/'03 Daily Logs'
