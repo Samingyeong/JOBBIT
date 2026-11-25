@@ -122,3 +122,39 @@ def markdown_blocks(body):
                 continue
         yield line
         index+=1
+
+
+INLINE = re.compile(
+    r'(?P<escape>\\[\\`*_{}\[\]()#+.!|~>-])'
+    r'|(?P<code>`+)(?P<literal>[^`\n]+)(?P=code)(?!`)'
+    r'|\[\[(?P<wiki>[^\]\n]+)\]\]'
+    r'|\[(?P<label>[^\]\n]+)\]\((?P<url><[^>]+>|(?:[^()\s]|\([^()\n]*\))+)\)'
+    r'|<(?P<autolink>https?://[^>\s]+)>'
+    r'|(?P<mark>\*{1,3}|(?<!\w)_{1,3})(?=\S)(?P<em>.+?)(?<=\S)(?P=mark)(?![\*_])'
+)
+
+
+def markdown_inline(line, styles=()):
+    """Yield display text, font styles and an optional (kind, target) link."""
+    end=0
+    for token in INLINE.finditer(line):
+        if token.start()>end:
+            yield line[end:token.start()],styles,None
+        end=token.end()
+        if token['escape']:
+            yield token['escape'][1:],styles,None
+        elif token['code']:
+            yield token['literal'],(*styles,'code'),None
+        elif token['wiki']:
+            target,_,alias=token['wiki'].partition('|')
+            yield alias or target,styles,('wiki',target)
+        elif token['url'] or token['autolink']:
+            target=(token['url'] or token['autolink']).strip('<>')
+            for text,formatting,_ in markdown_inline(token['label'] or target,styles):
+                yield text,formatting,('link',target)
+        else:
+            mark=token['mark']
+            additions={1:('italic',),2:('bold',),3:('bold','italic')}[len(mark)]
+            yield from markdown_inline(token['em'],(*styles,*additions))
+    if end<len(line):
+        yield line[end:],styles,None

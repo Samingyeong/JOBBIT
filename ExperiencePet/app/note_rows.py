@@ -15,6 +15,7 @@ class NoteRows(tk.Canvas):
         self.art=art
         self.labels=[]
         self.bounds=[]
+        self.row_fills=[]
         self.selected=None
         self.placeholder=''
         self.bind('<Configure>',self.draw)
@@ -38,6 +39,7 @@ class NoteRows(tk.Canvas):
             return
         self.delete('all')
         self.bounds=[]
+        self.row_fills=[]
         right=width-4
         art=self.art if self.art and height>=self.art.height()+7 else None
         text_right=right-art.width() if art else right
@@ -46,10 +48,9 @@ class NoteRows(tk.Canvas):
         for index,label in enumerate(self.labels):
             text=self.create_text(13,top+5,text=label,width=text_width,anchor='nw',font=self.font,fill='#20201e')
             bottom=max(top+27,self.bbox(text)[3]+6)
-            if index==self.selected or index%2:
-                fill='#f8cc78' if index==self.selected else '#fffaeb'
-                row=self.create_rectangle(4,top,right-2,bottom,outline='',fill=fill)
-                self.tag_lower(row,text)
+            row=self.create_rectangle(4,top,right-2,bottom,outline='',fill=self.row_color(index))
+            self.tag_lower(row,text)
+            self.row_fills.append(row)
             self.bounds.append((top,bottom))
             top=bottom
         if not self.labels and self.placeholder:
@@ -73,10 +74,20 @@ class NoteRows(tk.Canvas):
                 self.yview_moveto((bottom-self.winfo_height()+15)/max(bottom,self.bounds[-1][1]))
 
     def choose(self,index):
+        if index==self.selected:
+            return
+        old=self.selected
         self.selected=index
-        self.draw()
+        for position in (old,index):
+            if position is not None and position<len(self.row_fills):
+                self.itemconfigure(self.row_fills[position],fill=self.row_color(position))
         if self.on_select:
             self.on_select()
+
+    def row_color(self,index):
+        if index==self.selected:
+            return '#f8cc78'
+        return '#fffaeb' if index%2 else ''
 
     def click(self,event):
         self.focus_set()

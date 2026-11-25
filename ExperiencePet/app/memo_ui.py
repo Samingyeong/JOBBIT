@@ -8,14 +8,17 @@ from __future__ import annotations
 import os
 from math import sin
 from pathlib import Path
+import re
 import sys
 import uuid
+from urllib.parse import unquote,urlsplit
+import webbrowser
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageOps, ImageTk
 
 from diary_board import DiaryBoard
-from experience_format import normalize, history, markdown_blocks, obsidian_uri
+from experience_format import normalize, history, markdown_blocks, markdown_inline, obsidian_uri
 from note_rows import NoteRows, rounded
 from vault import APP_DATA, make_gpt_prompt
 from chatgpt_desktop import open_interview
@@ -147,6 +150,7 @@ class CaptureWindow:
         self.archive_art=None
         self.archive_grid=None
         self.archive_grid_size=None
+        self.paper_layout=None
         banner=tk.Canvas(cover,bg=LEMON,highlightthickness=0)
         banner.place(x=0,y=0,relwidth=1,relheight=1)
         self.cover_face=self.design_image('914', (101,103), (1.2855,1.0817,-.1128,0), 15.74)
@@ -209,8 +213,12 @@ class CaptureWindow:
             width,height=backing.winfo_width(),backing.winfo_height()
             if min(width,height)<=1:
                 return
-            backing.delete('all')
             offset=-((backing.winfo_rootx()-cover.winfo_rootx()-24)%274)
+            layout=(width,height,offset)
+            if layout==self.paper_layout:
+                return
+            self.paper_layout=layout
+            backing.delete('all')
             for y in range(0,height,322):
                 for x in range(offset,width,274):
                     backing.create_image(x,y,image=self.paper_tile,anchor='nw')
@@ -338,6 +346,7 @@ class CaptureWindow:
         self.archive_state=None
         self.rendered_record=None
         self.reader_tables=[]
+        self.reader_links=[]
         self.library_project=tk.StringVar(value='전체 프로젝트')
         self.filter_button=tk.Menubutton(self.archive_page,textvariable=self.library_project,
                               bg=PAPER,fg=BROWN,relief='flat',padx=0,pady=3,cursor='hand2',
@@ -353,6 +362,13 @@ class CaptureWindow:
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
                         bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11))
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
+        for name,weight,slant in (('bold','bold','roman'),('italic','normal','italic'),
+                                  ('bold_italic','bold','italic')):
+            self.reader.tag_configure(name,font=('Malgun Gothic',11,weight,slant))
+        self.reader.tag_configure('code',font=('Consolas',10),background=CREAM)
+        self.reader.tag_configure('link',foreground='#335880',underline=True)
+        self.reader.tag_bind('link','<Enter>',lambda _:self.reader.configure(cursor='hand2'))
+        self.reader.tag_bind('link','<Leave>',lambda _:self.reader.configure(cursor=''))
         self.reader.pack(fill='both',expand=True)
         self.reader.bind('<Configure>',self.resize_reader_tables)
         self.reader.configure(state='disabled')
@@ -391,24 +407,88 @@ class CaptureWindow:
         for table,_ in self.reader_tables:
             table.destroy()
         self.reader_tables.clear()
+        for tag in self.reader_links:
+            self.reader.tag_delete(tag)
+        self.reader_links.clear()
         self.reader.delete('1.0','end')
         if row and not body.startswith('# '):
-            self.reader.insert('end',row[1]+'\n','heading')
+            self.insert_reader_line(row[1],('heading',))
+        fence=None
         for block in markdown_blocks(body):
             if isinstance(block,list):
                 self.insert_reader_table(block)
-            elif block.startswith('#'):
-                self.reader.insert('end',block.lstrip('# ').strip()+'\n','heading')
+                continue
+            marker=re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$',block)
+            if marker and (fence is None or marker[1].startswith(fence) and not marker[2].strip()):
+                fence=None if fence else marker[1]
+            elif fence:
+                self.reader.insert('end',block+'\n','code')
             else:
-                self.reader.insert('end',block+'\n')
+                heading=re.match(r'^#{1,6}\s+(.*)$',block)
+                if heading:
+                    self.insert_reader_line(heading[1],('heading',))
+                else:
+                    self.insert_reader_line(re.sub(r'^(\s*)[-*+]\s+',r'\1• ',block))
         self.reader.configure(state='disabled')
+
+    def insert_reader_line(self,line,base=()):
+        for text,styles,link in markdown_inline(line):
+            tags=base
+            emphasis=set(styles)
+            if 'code' in emphasis:
+                tags+=('code',)
+            elif emphasis:
+                tags+=('bold_italic' if {'bold','italic'}<=emphasis else next(iter(emphasis)),)
+            if link:
+                tag=f'reader_link_{len(self.reader_links)}'
+                self.reader_links.append(tag)
+                tags+=('link',tag)
+                self.reader.tag_bind(tag,'<Button-1>',lambda _,target=link:self.follow_reader_link(*target))
+            self.reader.insert('end',text,tags)
+        self.reader.insert('end','\n')
+
+    def follow_reader_link(self,kind,target):
+        try:
+            url=urlsplit(target)
+        except ValueError:
+            return
+        if kind=='link' and url.scheme in ('https','http') and url.hostname:
+            webbrowser.open(target)
+            return
+        store=self.app.store
+        selected=self.records.selected
+        if not store or selected is None or kind=='link' and (url.scheme or url.netloc):
+            return
+        root=store.root
+        path=Path(unquote(url.path))
+        source=self.rows[selected][2]
+        if not path.name:
+            self.open_obsidian(source)
+            return
+        if path.suffix.lower()!='.md' and kind=='wiki':
+            path=path.parent/(path.name+'.md')
+        vault=root.parent if (root.parent/'.obsidian').is_dir() else root
+        bases=(root,vault,source.parent) if kind=='wiki' else (source.parent,root)
+        for base in bases:
+            resolved=(base/path).resolve()
+            if resolved.is_relative_to(vault) and resolved.is_file():
+                self.open_obsidian(resolved)
+                return
+        if kind=='wiki' and len(path.parts)==1:
+            matches=[p for p in vault.rglob('*.md') if p.name.casefold()==path.name.casefold()
+                     and p.resolve().is_relative_to(vault)]
+            if len(matches)==1:
+                self.open_obsidian(matches[0])
+                return
+        messagebox.showinfo('링크 열기','Vault에서 연결된 노트를 찾을 수 없어요.',parent=self.win)
 
     def insert_reader_table(self, rows):
         table=tk.Frame(self.reader,bg=EDGE)
         labels=[]
         for row,values in enumerate(rows):
             for column,value in enumerate(values):
-                label=tk.Label(table,text=value,justify='left',anchor='w',
+                display=''.join(part for part,_,_ in markdown_inline(value))
+                label=tk.Label(table,text=display,justify='left',anchor='w',
                                bg='#fff5d9' if row==0 else PAPER,fg=BROWN,padx=5,pady=3,
                                font=cute_font(self.win,10,row==0))
                 label.grid(row=row,column=column,sticky='nsew',padx=(1,0),pady=(1,0))
@@ -418,13 +498,16 @@ class CaptureWindow:
         self.reader.window_create('end',window=table)
         self.reader.insert('end','\n')
         self.reader_tables.append((table,(len(rows[0]),labels)))
-        self.resize_reader_tables()
+        self.resize_reader_table(len(rows[0]),labels)
 
     def resize_reader_tables(self,event=None):
-        available=max(self.reader.winfo_width()-24,180)
         for _,(columns,labels) in self.reader_tables:
-            width=max(20,available//columns-12)
-            for label in labels:
+            self.resize_reader_table(columns,labels)
+
+    def resize_reader_table(self,columns,labels):
+        width=max(20,max(self.reader.winfo_width()-24,180)//columns-12)
+        for label in labels:
+            if int(label.cget('wraplength'))!=width:
                 label.configure(wraplength=width)
 
     def open_record(self):
