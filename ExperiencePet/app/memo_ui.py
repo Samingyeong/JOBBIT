@@ -732,7 +732,6 @@ class CaptureWindow:
         self.raw.pack(fill='both',expand=True,padx=23,pady=(19,6))
         self.raw.bind('<<Modified>>',self.changed)
         self.button(tag_row,'임시저장',self.save_capture_draft,'#ffefae').pack(side='right',padx=(6,0),before=chips)
-        self.button(tag_row,'+ 새 경험',self.start_new_capture,'#ffefae').pack(side='right',padx=(6,0),before=chips)
 
     def new_tag(self):
         if not self.app.store:
@@ -740,7 +739,7 @@ class CaptureWindow:
             return
         dialog=ProjectTagDialog(self.win,self.app.store.add_project)
         if dialog.result:
-            self.project_var.set(dialog.result)
+            self.redraw_tags()
 
     def _build_final(self):
         header=tk.Frame(self.final_page,bg=PAPER)
@@ -797,19 +796,6 @@ class CaptureWindow:
             self.staged_draft=self.current_draft
             self.show_final_project()
             self.status.set('메모와 프로젝트를 임시저장했어요. 완성노트에 정리본을 붙여넣을 수 있어요.')
-
-    def start_new_capture(self):
-        if self.raw.get('1.0','end-1c').strip() and not self.flush():
-            self.select_view('memo')
-            return
-        self.raw.delete('1.0','end')
-        self.raw.edit_modified(False)
-        self.raw.edit_reset()
-        self.session=None
-        self.current_draft=None
-        self.select_view('memo')
-        self.raw.focus_set()
-        self.status.set('새 경험을 적고 프로젝트 태그를 선택해 주세요.')
 
     def flush(self):
         if self.dirty_after is not None:
@@ -927,6 +913,12 @@ class CaptureWindow:
         else:
             if self.staged_draft==draft:
                 self.staged_draft=None
+            if self.current_draft==draft and self.dirty_after is None:
+                self.raw.delete('1.0','end')
+                self.raw.edit_modified(False)
+                self.raw.edit_reset()
+                self.session=None
+                self.current_draft=None
             self.final_draft=None
             self.preview.delete('1.0','end')
             self.title_var.set('오늘의 경험')
