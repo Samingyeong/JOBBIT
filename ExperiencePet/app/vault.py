@@ -2,7 +2,7 @@
 Only writes inside a user-selected Vault, never modifies non-owned notes.
 """
 from __future__ import annotations
-from experience_format import normalize, read_note, SECTIONS
+from experience_format import normalize, read_note, split_note, SECTIONS
 from datetime import datetime
 from itertools import chain
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -217,11 +217,18 @@ class VaultStore:
                   f'created: {datetime.now().isoformat(timespec="seconds")}',
                   f'project: {yaml_value(project_link)}',
                   'status: reviewed', 'competencies: []', 'role: ""', 'evidence: 확인필요',
-                  'tags: [career, experience]', '---', '', f'# {title.strip()}', '']
+                  'tags: [career, experience]']
         if source:
-            source_p = Path(source)
-            if source_p.is_relative_to(self.root):
-                header += [f'> 원본: [[03 Daily Logs/{source_p.stem}|{source_p.stem}]]', '']
+            source_p=Path(source).resolve()
+            if source_p.parent==self.root/'03 Daily Logs':
+                try:
+                    meta,_=split_note(source_p.read_text(encoding='utf-8-sig'))
+                    stamp=re.search(r'^created:[ \t]*["\x27]?(\d{4}-\d\d-\d\d)',meta,re.M)
+                    if stamp:
+                        header.append(f'capture_date: {datetime.fromisoformat(stamp[1]).date().isoformat()}')
+                except (OSError,ValueError):
+                    pass
+        header.extend(['---','',f'# {title.strip()}',''])
         header.extend([body.strip(), '', '> 작성 후 확인: 성과 수치와 개인 역할이 실제 자료와 일치하는지 검증하세요.', ''])
         with self.lock:
             dest = self.reserve_note('02 Experiences', title)

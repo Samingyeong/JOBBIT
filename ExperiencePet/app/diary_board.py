@@ -39,6 +39,13 @@ def original_date(root,stem):
 def experiences_by_day(root):
     result = defaultdict(list)
     for _,title,path,body,meta in dated_history(root):
+        capture=re.search(r'^capture_date:[ \t]*(\d{4}-\d\d-\d\d)',meta,re.M)
+        if capture:
+            try:
+                result[date.fromisoformat(capture[1])].append((title,path))
+                continue
+            except ValueError:
+                pass
         stamp = re.search(r'^(?:created|date):[ \t]*["\x27]?(\d{4}-\d\d-\d\d)', meta, re.M)
         stamp = stamp or re.match(r'(\d{4}-\d\d-\d\d)', path.name)
         source=re.search(r'^> 원본:[ \t]*\[\[03 Daily Logs/([^/\\|\]\n]+)',body,re.M)

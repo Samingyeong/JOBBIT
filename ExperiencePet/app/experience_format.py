@@ -40,6 +40,8 @@ def normalize(text):
         if not fenced and key in ALIASES:
             group=ALIASES[key]
             parts[group].append('')
+        elif not fenced and re.match(r'^> 원본:[ \t]*\[\[03 Daily Logs/',line):
+            continue
         elif not fenced and line.startswith('> 원본:'):
             parts['근거와 미확인 사항'].append(line)
         else:
