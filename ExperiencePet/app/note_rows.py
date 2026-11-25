@@ -18,7 +18,7 @@ class NoteRows(tk.Canvas):
         self.row_fills=[]
         self.selected=None
         self.placeholder=''
-        self.scrollbar=None
+        self.whole_rows=False
         self.bind('<Configure>',self.draw)
         self.bind('<MouseWheel>',self.scroll)
         self.bind('<Button-1>',self.click)
@@ -62,20 +62,18 @@ class NoteRows(tk.Canvas):
         if art:
             self.create_image(width-3,height-3,image=art,anchor='se')
         self.configure(scrollregion=(0,0,width,total),yscrollincrement=14)
-        if self.scrollbar:
-            self.update_view(self.scrollbar,*self.yview())
+        if self.whole_rows:
+            self.update_view()
 
     def scroll(self,event):
         self.yview_scroll(-2 if event.delta>0 else 2,'units')
         return 'break'
 
-    def use_scrollbar(self,scrollbar):
-        self.scrollbar=scrollbar
-        scrollbar.configure(command=self.yview)
-        self.configure(yscrollcommand=lambda first,last:self.update_view(scrollbar,first,last))
+    def show_whole_rows(self):
+        self.whole_rows=True
+        self.configure(yscrollcommand=self.update_view)
 
-    def update_view(self,scrollbar,first,last):
-        scrollbar.set(first,last)
+    def update_view(self,*_):
         self.delete('row_clip')
         height=self.winfo_height()
         top,bottom=self.canvasy(0),self.canvasy(height)

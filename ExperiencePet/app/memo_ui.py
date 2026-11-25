@@ -195,8 +195,8 @@ class CaptureWindow:
             self.draw_paper_edge(banner,width,height)
             if self.view=='archive' and width>48 and height>167:
                 banner.create_image(24,150,image=self.archive_paper(width-48,height-167),anchor='nw')
-                banner.create_image(width-56,76,image=self.archive_art[0],anchor='nw')
-                banner.create_image(5,height-18,image=self.archive_art[1],anchor='sw')
+                banner.create_image(width-112,64,image=self.archive_art[0],anchor='nw')
+                banner.create_image(-39,height-120,image=self.archive_art[1],anchor='nw')
 
         banner.bind('<Configure>',draw_banner)
         self.draw_banner=draw_banner
@@ -323,8 +323,7 @@ class CaptureWindow:
         footer.create_image(3,height-3,image=self.memo_badges[0],anchor='sw')
         footer.create_image(width-3,height-3,image=self.memo_badges[1],anchor='se')
 
-    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False, mirror=False,
-                     fit=(105,105)):
+    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False, mirror=False):
         width,height=size
         scale_x,scale_y,offset_x,offset_y=crop
         with Image.open(ASSETS/f'figma_{asset}.png') as source:
@@ -340,7 +339,7 @@ class CaptureWindow:
             result.putalpha(result.getchannel('A').point(lambda alpha:round(alpha*opacity)))
         if trim:
             result=result.crop(result.getchannel('A').getbbox())
-            result.thumbnail(fit,Image.Resampling.LANCZOS)
+            result.thumbnail((105,105),Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(result,master=self.win)
 
     def _build_archive(self):
@@ -358,20 +357,14 @@ class CaptureWindow:
         self.filter_button.configure(menu=self.filters)
         record_panel=tk.Frame(self.archive_page,bg=PAPER)
         record_panel.pack(fill='x',pady=(4,9))
-        record_scroll=tk.Scrollbar(record_panel,orient='vertical')
-        record_scroll.pack(side='right',fill='y')
         self.records=NoteRows(record_panel,project_font,height=157,
                               on_select=self.read_record,on_open=self.open_record)
         self.records.pack(side='left',fill='both',expand=True)
-        self.records.use_scrollbar(record_scroll)
+        self.records.show_whole_rows()
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
-        reader_scroll=tk.Scrollbar(reading_area,orient='vertical')
-        reader_scroll.pack(side='right',fill='y')
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
-                        bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11),
-                        yscrollcommand=reader_scroll.set)
-        reader_scroll.configure(command=self.reader.yview)
+                        bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11))
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
         for name,weight,slant in (('bold','bold','roman'),('italic','normal','italic'),
                                   ('bold_italic','bold','italic')):
@@ -415,7 +408,7 @@ class CaptureWindow:
             return
         self.rendered_record=record
         self.reader.configure(state='normal')
-        for table,_ in self.reader_tables:
+        for table,_,_,_ in self.reader_tables:
             table.destroy()
         self.reader_tables.clear()
         for tag in self.reader_links:
@@ -494,13 +487,7 @@ class CaptureWindow:
         messagebox.showinfo('링크 열기','Vault에서 연결된 노트를 찾을 수 없어요.',parent=self.win)
 
     def insert_reader_table(self, rows):
-        container=tk.Frame(self.reader,bg=PAPER)
-        canvas=tk.Canvas(container,bg=PAPER,highlightthickness=0,borderwidth=0)
-        canvas.pack(fill='x')
-        scrollbar=tk.Scrollbar(container,orient='horizontal',command=canvas.xview)
-        canvas.configure(xscrollcommand=scrollbar.set)
-        table=tk.Frame(canvas,bg=EDGE)
-        item=canvas.create_window(0,0,window=table,anchor='nw')
+        table=tk.Frame(self.reader,bg=EDGE,padx=1,pady=1)
         labels=[]
         from tkinter.font import Font
         fonts=[Font(root=self.win,font=cute_font(self.win,10,bold)) for bold in (True,False)]
@@ -512,57 +499,67 @@ class CaptureWindow:
                 label=tk.Label(table,text=display,justify='left',anchor='w',
                                bg='#fff5d9' if row==0 else PAPER,fg=BROWN,padx=5,pady=3,
                                font=cute_font(self.win,10,row==0))
-                label.grid(row=row,column=column,sticky='nsew',padx=(1,0),pady=(1,0))
+                label.source_text=display
+                label.measure=fonts[row!=0].measure
                 labels.append(label)
                 label.bind('<MouseWheel>',self.scroll_reader)
-                label.bind('<Shift-MouseWheel>',lambda event,c=canvas:self.scroll_table(event,c))
-        canvas.bind('<MouseWheel>',self.scroll_reader)
-        canvas.bind('<Shift-MouseWheel>',lambda event:self.scroll_table(event,canvas))
-        self.reader.window_create('end',window=container)
+        table.bind('<MouseWheel>',self.scroll_reader)
+        self.reader.window_create('end',window=table)
         self.reader.insert('end','\n')
-        layout=(canvas,table,item,scrollbar,preferred,labels)
-        self.reader_tables.append((container,layout))
+        layout=(table,len(rows),preferred,labels)
+        self.reader_tables.append(layout)
         self.resize_reader_table(*layout)
 
     def resize_reader_tables(self,event=None):
-        for _,layout in self.reader_tables:
+        for layout in self.reader_tables:
             self.resize_reader_table(*layout)
 
     def scroll_reader(self,event):
         self.reader.yview_scroll(-3 if event.delta>0 else 3,'units')
         return 'break'
 
-    @staticmethod
-    def scroll_table(event,canvas):
-        canvas.xview_scroll(-3 if event.delta>0 else 3,'units')
-        return 'break'
-
-    def resize_reader_table(self,canvas,table,item,scrollbar,preferred,labels):
-        available=max(1,self.reader.winfo_width()-2*int(self.reader.cget('padx'))-4)
+    def resize_reader_table(self,table,row_count,preferred,labels):
+        available=max(120,self.reader.winfo_width()-2*int(self.reader.cget('padx'))-6)
         columns=len(preferred)
-        extra=max(0,available-sum(preferred))//columns
-        widths=[width+extra for width in preferred]
-        table_width=sum(widths)
-        for column,width in enumerate(widths):
-            table.columnconfigure(column,minsize=width)
+        visible=min(columns,max(1,available//56))
+        key=(available,visible)
+        if getattr(table,'layout_key',None)==key:
+            return
+        table.layout_key=key
+        for column in range(columns):
+            table.columnconfigure(column,minsize=0)
         for index,label in enumerate(labels):
-            width=widths[index%columns]-12
-            if int(label.cget('wraplength'))!=width:
-                label.configure(wraplength=width)
-        canvas.configure(width=available)
-        canvas.itemconfigure(item,width=table_width)
-        if table_width>available and not scrollbar.winfo_manager():
-            scrollbar.pack(fill='x')
-        elif table_width<=available and scrollbar.winfo_manager():
-            scrollbar.pack_forget()
-            canvas.xview_moveto(0)
+            row,column=divmod(index,columns)
+            group,slot=divmod(column,visible)
+            label.grid(row=group*row_count+row,column=slot,sticky='nsew',
+                       padx=(0,1 if slot<visible-1 else 0),pady=(0,1))
+        usable=available-2
+        columns_used=min(columns,visible)
+        remainder=max(0,usable-56*columns_used)
+        weights=preferred[:columns_used] if columns_used==columns else [1]*columns_used
+        widths=[56+remainder*weight//sum(weights) for weight in weights]
+        widths[-1]+=usable-sum(widths)
+        for slot,width in enumerate(widths):
+            table.columnconfigure(slot,minsize=width)
+        for index,label in enumerate(labels):
+            width=max(1,widths[(index%columns)%visible]-15)
+            text=re.sub(r'\S+',lambda match:self.wrap_table_word(match[0],label.measure,width),
+                        label.source_text)
+            label.configure(text=text,wraplength=width)
 
-        def fit_height():
-            if canvas.winfo_exists():
-                height=table.winfo_reqheight()
-                canvas.configure(height=height,scrollregion=(0,0,table_width,height))
-
-        canvas.after_idle(fit_height)
+    @staticmethod
+    def wrap_table_word(word,measure,width):
+        if measure(word)<=width:
+            return word
+        pieces=[]
+        part=''
+        for character in word:
+            if part and measure(part+character)>width:
+                pieces.append(part)
+                part=''
+            part+=character
+        pieces.append(part)
+        return '\n'.join(pieces)
 
     def open_record(self):
         chosen=self.records.selected
@@ -583,14 +580,13 @@ class CaptureWindow:
                                      lambda size,bold=False:cute_font(self.win,size,bold),
                                      self.open_obsidian,ASSETS,self.paper_tile)
         if view=='archive' and self.archive_art is None:
-            self.archive_art=(self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True,
-                                               trim=True,fit=(52,190)),
-                              self.design_image('921',(133,133),mirror=True,trim=True,fit=(50,72)))
+            self.archive_art=(self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True),
+                              self.design_image('921',(133,133),mirror=True))
         if view=='final' and self.final_art is None:
             self.final_art=self.make_art(self.paper,self.design_image('917',(160,158)),160,158,
                                          ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
         self.view=view
-        self.paper.pack_configure(padx=58 if view=='archive' else 24)
+        self.paper.pack_configure(padx=(69,89) if view=='archive' else 24)
         self.draw_banner()
         self.win.after_idle(self.paint_paper)
         self.memo_footer.pack_forget()
