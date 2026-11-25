@@ -195,8 +195,8 @@ class CaptureWindow:
             self.draw_paper_edge(banner,width,height)
             if self.view=='archive' and width>48 and height>167:
                 banner.create_image(24,150,image=self.archive_paper(width-48,height-167),anchor='nw')
-                banner.create_image(width-57,77,image=self.archive_art[0],anchor='nw')
-                banner.create_image(7,height-74,image=self.archive_art[1],anchor='nw')
+                banner.create_image(width-56,76,image=self.archive_art[0],anchor='nw')
+                banner.create_image(5,height-18,image=self.archive_art[1],anchor='sw')
 
         banner.bind('<Configure>',draw_banner)
         self.draw_banner=draw_banner
@@ -323,7 +323,8 @@ class CaptureWindow:
         footer.create_image(3,height-3,image=self.memo_badges[0],anchor='sw')
         footer.create_image(width-3,height-3,image=self.memo_badges[1],anchor='se')
 
-    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False, mirror=False):
+    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1, trim=False, mirror=False,
+                     fit=(105,105)):
         width,height=size
         scale_x,scale_y,offset_x,offset_y=crop
         with Image.open(ASSETS/f'figma_{asset}.png') as source:
@@ -339,7 +340,7 @@ class CaptureWindow:
             result.putalpha(result.getchannel('A').point(lambda alpha:round(alpha*opacity)))
         if trim:
             result=result.crop(result.getchannel('A').getbbox())
-            result.thumbnail((105,105),Image.Resampling.LANCZOS)
+            result.thumbnail(fit,Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(result,master=self.win)
 
     def _build_archive(self):
@@ -355,13 +356,22 @@ class CaptureWindow:
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False,font=project_font)
         self.filter_button.configure(menu=self.filters)
-        self.records=NoteRows(self.archive_page,project_font,height=157,
+        record_panel=tk.Frame(self.archive_page,bg=PAPER)
+        record_panel.pack(fill='x',pady=(4,9))
+        record_scroll=tk.Scrollbar(record_panel,orient='vertical')
+        record_scroll.pack(side='right',fill='y')
+        self.records=NoteRows(record_panel,project_font,height=157,
                               on_select=self.read_record,on_open=self.open_record)
-        self.records.pack(fill='x',pady=(4,9))
+        self.records.pack(side='left',fill='both',expand=True)
+        self.records.use_scrollbar(record_scroll)
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
+        reader_scroll=tk.Scrollbar(reading_area,orient='vertical')
+        reader_scroll.pack(side='right',fill='y')
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
-                        bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11))
+                        bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11),
+                        yscrollcommand=reader_scroll.set)
+        reader_scroll.configure(command=self.reader.yview)
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
         for name,weight,slant in (('bold','bold','roman'),('italic','normal','italic'),
                                   ('bold_italic','bold','italic')):
@@ -492,19 +502,25 @@ class CaptureWindow:
         table=tk.Frame(canvas,bg=EDGE)
         item=canvas.create_window(0,0,window=table,anchor='nw')
         labels=[]
+        from tkinter.font import Font
+        fonts=[Font(root=self.win,font=cute_font(self.win,10,bold)) for bold in (True,False)]
+        preferred=[94]*len(rows[0])
         for row,values in enumerate(rows):
             for column,value in enumerate(values):
                 display=''.join(part for part,_,_ in markdown_inline(value))
+                preferred[column]=max(preferred[column],min(275,fonts[row!=0].measure(display)+15))
                 label=tk.Label(table,text=display,justify='left',anchor='w',
                                bg='#fff5d9' if row==0 else PAPER,fg=BROWN,padx=5,pady=3,
                                font=cute_font(self.win,10,row==0))
                 label.grid(row=row,column=column,sticky='nsew',padx=(1,0),pady=(1,0))
                 labels.append(label)
-        for column in range(len(rows[0])):
-            table.columnconfigure(column,weight=1,uniform='column')
+                label.bind('<MouseWheel>',self.scroll_reader)
+                label.bind('<Shift-MouseWheel>',lambda event,c=canvas:self.scroll_table(event,c))
+        canvas.bind('<MouseWheel>',self.scroll_reader)
+        canvas.bind('<Shift-MouseWheel>',lambda event:self.scroll_table(event,canvas))
         self.reader.window_create('end',window=container)
         self.reader.insert('end','\n')
-        layout=(canvas,table,item,scrollbar,len(rows[0]),labels)
+        layout=(canvas,table,item,scrollbar,preferred,labels)
         self.reader_tables.append((container,layout))
         self.resize_reader_table(*layout)
 
@@ -512,12 +528,25 @@ class CaptureWindow:
         for _,layout in self.reader_tables:
             self.resize_reader_table(*layout)
 
-    def resize_reader_table(self,canvas,table,item,scrollbar,columns,labels):
+    def scroll_reader(self,event):
+        self.reader.yview_scroll(-3 if event.delta>0 else 3,'units')
+        return 'break'
+
+    @staticmethod
+    def scroll_table(event,canvas):
+        canvas.xview_scroll(-3 if event.delta>0 else 3,'units')
+        return 'break'
+
+    def resize_reader_table(self,canvas,table,item,scrollbar,preferred,labels):
         available=max(1,self.reader.winfo_width()-2*int(self.reader.cget('padx'))-4)
-        cell_width=max(72,available//columns)
-        table_width=columns*cell_width
-        width=cell_width-12
-        for label in labels:
+        columns=len(preferred)
+        extra=max(0,available-sum(preferred))//columns
+        widths=[width+extra for width in preferred]
+        table_width=sum(widths)
+        for column,width in enumerate(widths):
+            table.columnconfigure(column,minsize=width)
+        for index,label in enumerate(labels):
+            width=widths[index%columns]-12
             if int(label.cget('wraplength'))!=width:
                 label.configure(wraplength=width)
         canvas.configure(width=available)
@@ -554,8 +583,9 @@ class CaptureWindow:
                                      lambda size,bold=False:cute_font(self.win,size,bold),
                                      self.open_obsidian,ASSETS,self.paper_tile)
         if view=='archive' and self.archive_art is None:
-            self.archive_art=(self.design_image('902',(50,101),(2.0177,1,-.5265,0),mirror=True),
-                              self.design_image('921',(48,48),mirror=True))
+            self.archive_art=(self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True,
+                                               trim=True,fit=(52,190)),
+                              self.design_image('921',(133,133),mirror=True,trim=True,fit=(50,72)))
         if view=='final' and self.final_art is None:
             self.final_art=self.make_art(self.paper,self.design_image('917',(160,158)),160,158,
                                          ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))

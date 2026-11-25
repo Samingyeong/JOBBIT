@@ -18,6 +18,7 @@ class NoteRows(tk.Canvas):
         self.row_fills=[]
         self.selected=None
         self.placeholder=''
+        self.scrollbar=None
         self.bind('<Configure>',self.draw)
         self.bind('<MouseWheel>',self.scroll)
         self.bind('<Button-1>',self.click)
@@ -61,10 +62,33 @@ class NoteRows(tk.Canvas):
         if art:
             self.create_image(width-3,height-3,image=art,anchor='se')
         self.configure(scrollregion=(0,0,width,total),yscrollincrement=14)
+        if self.scrollbar:
+            self.update_view(self.scrollbar,*self.yview())
 
     def scroll(self,event):
         self.yview_scroll(-2 if event.delta>0 else 2,'units')
         return 'break'
+
+    def use_scrollbar(self,scrollbar):
+        self.scrollbar=scrollbar
+        scrollbar.configure(command=self.yview)
+        self.configure(yscrollcommand=lambda first,last:self.update_view(scrollbar,first,last))
+
+    def update_view(self,scrollbar,first,last):
+        scrollbar.set(first,last)
+        self.delete('row_clip')
+        height=self.winfo_height()
+        top,bottom=self.canvasy(0),self.canvasy(height)
+        width=self.winfo_width()
+        for start,end in self.bounds:
+            if end-start>=height:
+                continue
+            if start<top<end:
+                self.create_rectangle(4,top,width-5,end,fill='#fff5dc',outline='',tags='row_clip')
+            if start<bottom<end:
+                self.create_rectangle(4,start,width-5,bottom,fill='#fff5dc',outline='',tags='row_clip')
+                break
+        self.create_line(5,bottom-1,width-5,bottom-1,fill='#ae926d',tags='row_clip')
 
     def reveal(self):
         self.yview_moveto(0)
