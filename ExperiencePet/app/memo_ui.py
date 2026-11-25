@@ -92,19 +92,24 @@ class CaptureWindow:
         self.win.minsize(540,490)
         self.win.maxsize(self.win.winfo_screenwidth(),self.win.winfo_screenheight())
         self.win.configure(bg=LEMON)
-        cover=tk.Frame(self.win,bg=LEMON,padx=19,pady=5)
+        cover=tk.Frame(self.win,bg=LEMON)
         cover.pack(fill='both',expand=True)
-        banner=tk.Canvas(cover,height=100,bg=LEMON,highlightthickness=0)
-        banner.pack(fill='x')
-        self.cover_face=self.design_image('914', (125, 109), (1.2855, 1.0817, -.1128, 0))
-        self.cover_friend=self.design_image('919', (77, 77), (1, 1.9442, 0, -.4725))
-        self.cover_pattern=self.design_image('911', (528, 232), (1.5205, 1.1888, -.4932, -.0863))
+        banner=tk.Canvas(cover,bg=LEMON,highlightthickness=0)
+        banner.place(x=0,y=0,relwidth=1,relheight=1)
+        self.cover_face=self.design_image('914', (101,103), (1.2855,1.0817,-.1128,0), 15.74)
+        self.cover_friend=self.design_image('919', (67,68), (1,1.9442,0,-.4725), 8.88)
+        self.pattern_wide=self.design_image('911', (232,528), (1.5205,1.1888,-.4932,-.0863), -90)
+        self.pattern_left=self.design_image('911', (304,528), (1.1604,1.1888,-.1494,-.0863))
+        self.pattern_right=self.design_image('911', (333,448), (1,1.3204,0,-.0959), 173.47)
 
         def draw_banner(event):
             center=event.width/2
             banner.delete('all')
-            banner.create_image(-230,-41,image=self.cover_pattern,anchor='nw')
-            banner.create_image(event.width-260,-41,image=self.cover_pattern,anchor='nw')
+            banner.create_image(-193,-41,image=self.pattern_wide,anchor='nw')
+            banner.create_image(event.width-360,-41,image=self.pattern_wide,anchor='nw')
+            banner.create_image(71,event.height-147,image=self.pattern_wide,anchor='nw')
+            banner.create_image(-86,242,image=self.pattern_left,anchor='nw')
+            banner.create_image(event.width-335,205,image=self.pattern_right,anchor='nw')
             from tkinter.font import Font
             title='짱구의 경험 기록장'
             font=Font(root=self.win,font=cute_font(self.win,26,True))
@@ -112,41 +117,31 @@ class CaptureWindow:
             while font.measure(title)>max_width and font.cget('size')>10:
                 font.configure(size=font.cget('size')-1)
             self.banner_font=font
-            half=font.measure(title)/2
-            banner.create_image(center-half+4,-6,image=self.cover_face,anchor='ne')
-            banner.create_image(center+half+4,31,image=self.cover_friend,anchor='nw')
-            banner.create_text(center,51,text=title,font=font,fill=BROWN)
+            banner.create_image(center-280,-6,image=self.cover_face,anchor='nw')
+            banner.create_image(center+152,58,image=self.cover_friend,anchor='nw')
+            banner.create_text(center,66,text=title,font=font,fill=BROWN)
 
         banner.bind('<Configure>',draw_banner)
-        rail=tk.Frame(cover,bg=LEMON,height=44)
-        rail.pack(fill='x',padx=(47,0))
-        rail.pack_propagate(False)
         self.tabs={}
         for key,label,color in [('memo','오늘 이야기','#fa5b60'),('final','완성노트','#ffd567'),('archive','경험모음','#84e36e'),('calendar','일기달력','#6875f5')]:
-            btn=self.button(rail,label,lambda k=key:self.select_view(k),color)
+            btn=self.button(cover,label,lambda k=key:self.select_view(k),color)
             btn.configure(activebackground=color)
-            btn.place(x=109*len(self.tabs),y=8,width=100,height=36)
+            btn.place(x=66+109*len(self.tabs),y=121,width=100,height=28)
             self.tabs[key]=btn
         paper=tk.Frame(cover,bg=PAPER,highlightbackground=EDGE,highlightthickness=2)
-        paper.pack(fill='both',expand=True)
+        paper.pack(fill='both',expand=True,padx=19,pady=(146,12))
         backing=tk.Canvas(paper,bg=PAPER,highlightthickness=0)
         backing.place(x=0,y=0,relwidth=1,relheight=1)
-        backing.lower('all')
-        self.memo_badges=(
-            self.design_image('901', (66, 66)),
-            self.design_image('904', (81, 77), (2.2009, 2.4154, -.5633, -.6824)),
-        )
+        self.paper_tile=self.design_image('906', (274,322), (1,1.4811,0,-.4811), opacity=.4)
 
         def paint_paper(event=None):
             width,height=backing.winfo_width(),backing.winfo_height()
             if min(width,height)<=1:
                 return
             backing.delete('all')
-            self.paper_pattern=self.design_image('906', (width,height), (1,1.4811,0,-.4811))
-            backing.create_image(0,0,image=self.paper_pattern,anchor='nw')
-            if self.view=='memo':
-                backing.create_image(-12,height,image=self.memo_badges[0],anchor='sw')
-                backing.create_image(width+8,height,image=self.memo_badges[1],anchor='se')
+            for y in range(0,height,322):
+                for x in range(0,width,274):
+                    backing.create_image(x,y,image=self.paper_tile,anchor='nw')
 
         self.paint_paper=paint_paper
         backing.bind('<Configure>',paint_paper)
@@ -166,9 +161,38 @@ class CaptureWindow:
         tk.Label(self.action_row,textvariable=self.status,bg=PAPER,fg=BROWN,
                  wraplength=310,justify='left',font=cute_font(self.win,9)).pack(side='left')
         self.project_var.trace_add('write',lambda *_:self.schedule_save())
+        self.memo_footer=tk.Canvas(paper,bg=PAPER,height=112,highlightthickness=0)
+        self.memo_badges=(
+            self.design_image('901', (105,105), rotation=10.33),
+            self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64),
+        )
+        self.memo_footer.bind('<Configure>',self.draw_memo_footer)
+        self.project_var.trace_add('write',self.draw_memo_footer)
         self.select_view('memo')
 
-    def design_image(self, asset, size, crop=(1, 1, 0, 0)):
+    def draw_memo_footer(self, *_):
+        footer=self.memo_footer
+        width,height=footer.winfo_width(),footer.winfo_height()
+        footer.delete('all')
+        grid_y=-(footer.winfo_y()%322)
+        for x in range(0,width,274):
+            footer.create_image(x,grid_y,image=self.paper_tile,anchor='nw')
+            footer.create_image(x,grid_y+322,image=self.paper_tile,anchor='nw')
+        footer.create_rectangle(39,-3,width-39,height-12,fill=CREAM,outline=EDGE)
+        footer.create_text(63,16,text='오늘의 메모',font=cute_font(self.win,12,True),
+                           fill=BROWN,anchor='w')
+        project=self.project_var.get().strip()
+        if project:
+            from tkinter.font import Font
+            font=Font(root=self.win,font=cute_font(self.win,10))
+            chip_width=min(font.measure(project)+20,max(100,width-220))
+            roundrect(footer,63,34,63+chip_width,63,8,fill='#ffef96',outline='#f7d61d')
+            footer.create_text(73,48,text=project,font=font,fill=BROWN,anchor='w',
+                               width=chip_width-14)
+        footer.create_image(-33,-3,image=self.memo_badges[0],anchor='nw')
+        footer.create_image(width-124,-4,image=self.memo_badges[1],anchor='nw')
+
+    def design_image(self, asset, size, crop=(1, 1, 0, 0), rotation=0, opacity=1):
         width,height=size
         scale_x,scale_y,offset_x,offset_y=crop
         with Image.open(ASSETS/f'figma_{asset}.png') as source:
@@ -176,6 +200,10 @@ class CaptureWindow:
                 (round(width*scale_x),round(height*scale_y)),Image.Resampling.LANCZOS)
         result=Image.new('RGBA',size)
         result.paste(scaled,(round(width*offset_x),round(height*offset_y)))
+        if rotation:
+            result=result.rotate(-rotation,Image.Resampling.BICUBIC,expand=True)
+        if opacity<1:
+            result.putalpha(result.getchannel('A').point(lambda alpha:round(alpha*opacity)))
         return ImageTk.PhotoImage(result,master=self.win)
 
     def _build_archive(self):
@@ -247,9 +275,11 @@ class CaptureWindow:
     def select_view(self,view):
         self.view=view
         self.paint_paper()
+        self.memo_footer.pack_forget()
+        self.page.pack_configure(pady=(20,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
             page.pack_forget()
-            self.tabs[k].place_configure(y=0 if k==view else 8,height=44 if k==view else 36)
+            self.tabs[k].place_configure(y=108 if k==view else 121,height=38 if k==view else 25)
             if k==view:
                 page.pack(fill='both',expand=True)
         actions={'memo':('ChatGPT에서 대화하기',self.send_to_chatgpt),'final':('Obsidian에 저장',self.save_experience),
@@ -266,6 +296,7 @@ class CaptureWindow:
         label,fn=actions[view]
         self.action.configure(text=label,command=fn)
         if view=='memo':
+            self.memo_footer.pack(side='bottom',fill='x',before=self.page)
             self.redraw_tags()
         if view=='archive':
             self.refresh_archive()
@@ -285,17 +316,18 @@ class CaptureWindow:
         chips.configure(xscrollcommand=scroll.set)
         def draw_tags(event=None):
             chips.delete('all')
-            font=tkfont.Font(root=self.win,font=cute_font(self.win,10))
+            font=tkfont.Font(root=self.win,family='Malgun Gothic',size=10,weight='bold')
             names=self.app.store.project_names() if self.app.store else []
             x=3
             for i,name in enumerate([*names,None]):
                 active=name is not None and self.project_var.get()==name
                 label=('+ 새 태그' if name is None else ('✓ ' if active else '')+name)
-                width=font.measure(label)+28
-                color='#f7c600' if active else ['#c4ffb8','#ffbbbb','#ffe4b4','#c4ffb8'][i%4]
+                width=font.measure(label)+22
+                colors=[('#c5ffba','#37812a'),('#ffbdbd','#ad4848'),('#ffe7ba','#a86727')]
+                color,border=('#facc00','#ffef96') if active else colors[0 if name is None else i%len(colors)]
                 tag='chip'+str(i)
-                roundrect(chips,x,6,x+width,40,8,fill=color,outline=EDGE,width=1,tags=tag)
-                chips.create_text(x+width/2,23,text=label,font=cute_font(self.win,10),fill='white' if active else BROWN,tags=tag)
+                roundrect(chips,x,5,x+width,41,8,fill=color,outline=border,width=1,tags=tag)
+                chips.create_text(x+width/2,23,text=label,font=font,fill='white' if active else BROWN,tags=tag)
                 def choose(e,n=name):
                     if n is None: self.new_tag()
                     else: self.project_var.set('' if self.project_var.get()==n else n)
@@ -303,6 +335,7 @@ class CaptureWindow:
                 chips.tag_bind(tag,'<Enter>',lambda e:chips.configure(cursor='hand2'))
                 chips.tag_bind(tag,'<Leave>',lambda e:chips.configure(cursor=''))
                 x+=width+7
+            self.chip_font=font
             chips.configure(scrollregion=(0,0,x,48))
             if x>chips.winfo_width() and not scroll.winfo_manager():
                 scroll.pack(fill='x',after=chips)
@@ -316,14 +349,8 @@ class CaptureWindow:
         self.raw=tk.Text(sheet,wrap='word',bg='white',fg=BROWN,relief='flat',bd=0,highlightthickness=0,
                   insertbackground=BROWN,font=cute_font(self.win,11),padx=14,pady=11,
                   selectbackground='#ffe6a5',undo=True,spacing2=4)
-        self.raw.pack(fill='both',expand=True,padx=23,pady=(19,8))
+        self.raw.pack(fill='both',expand=True,padx=23,pady=(19,6))
         self.raw.bind('<<Modified>>',self.changed)
-        tk.Label(sheet,text='오늘의 메모',bg=CREAM,fg=BROWN,
-                 font=cute_font(self.win,12,True)).pack(anchor='w',padx=23)
-        hint=tk.Label(sheet,bg=CREAM,fg=MUTED,wraplength=495,
-                text='오늘 한 일, 새로 알게 된 점, 다음에 시도할 일을 적어 보세요.',
-                font=cute_font(self.win,9))
-        hint.pack(anchor='w',padx=23,pady=(3,10))
 
     def new_tag(self):
         if not self.app.store:
