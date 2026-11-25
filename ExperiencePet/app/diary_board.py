@@ -17,17 +17,26 @@ INK = '#20201e'
 EDGE = '#856341'
 
 
-def experiences_by_day(root):
+def experiences_by_day(root,diaries):
     result = defaultdict(list)
-    for _, title, path, _, meta in dated_history(root):
+    source_dates={(source_path.parent.name,source_path.stem):day
+                  for day,entries in diaries.items() for _,source_path in entries}
+    linked=set()
+    for _,title,path,body,meta in dated_history(root):
         stamp = re.search(r'^(?:created|date):[ \t]*["\x27]?(\d{4}-\d\d-\d\d)', meta, re.M)
         stamp = stamp or re.match(r'(\d{4}-\d\d-\d\d)', path.name)
+        source=re.search(r'^> 원본:[ \t]*\[\[03 Daily Logs/([^|\]\n]+)',body,re.M)
+        key=('03 Daily Logs',source[1].removesuffix('.md')) if source else None
+        if key in source_dates:
+            result[source_dates[key]].append((title,path))
+            linked.add(key)
+            continue
         try:
             day = date.fromisoformat(stamp[1]) if stamp else datetime.fromtimestamp(path.stat().st_mtime).date()
         except (ValueError, OSError):
             continue
         result[day].append((title, path))
-    return result
+    return result,linked
 
 
 def diaries_by_day(root):
@@ -38,8 +47,9 @@ def diaries_by_day(root):
             stamp = re.search(r'^created:[ \t]*["\x27]?(\d{4}-\d\d-\d\d)',meta,re.M)
             stamp = stamp or re.match(r'(\d{4}-\d\d-\d\d)',path.name)
             if stamp:
-                memo = body.partition('## 원본 메모')[2].strip()
-                label = memo.splitlines()[0] if memo else path.stem
+                memo=body.partition('## 원본 메모')[2].partition('## 후속 정리')[0].strip()
+                label=next((line.strip() for line in memo.splitlines()
+                            if line.strip() and not line.lstrip().startswith('#')),path.stem)
                 result[date.fromisoformat(stamp[1])].append((label,path))
         except (OSError, ValueError):
             continue
@@ -134,8 +144,11 @@ class DiaryBoard(tk.Frame):
 
     def refresh(self):
         store = self.store()
-        self.days = experiences_by_day(store.root) if store else {}
         self.diaries = diaries_by_day(store.root) if store else {}
+        self.days,linked=experiences_by_day(store.root,self.diaries) if store else ({},set())
+        self.diaries={day:remaining for day,entries in self.diaries.items()
+                      if (remaining:=[(title,path) for title,path in entries
+                                      if (path.parent.name,path.stem) not in linked])}
         self.todo_days=set()
         if store:
             for path in (store.root/FOLDER).glob('*.md'):
@@ -193,8 +206,7 @@ class DiaryBoard(tk.Frame):
             self.entry.delete(0, 'end')
         self.selected = day
         self.draw()
-        self.note_items = [*self.days.get(day, []),
-                           *((f'[원본] {title}',path) for title,path in self.diaries.get(day, []))]
+        self.note_items=[*self.days.get(day,[]),*self.diaries.get(day,[])]
         completed=len(self.days.get(day,[]))
         self.notes_heading.set(f'완성 경험 ({completed})')
         self.notes.art=None if self.note_items else self.corner

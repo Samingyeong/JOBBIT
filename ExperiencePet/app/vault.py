@@ -2,7 +2,8 @@
 Only writes inside a user-selected Vault, never modifies non-owned notes.
 """
 from __future__ import annotations
-from experience_format import normalize, SECTIONS
+from experience_format import normalize, read_note, SECTIONS
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import json
@@ -21,6 +22,14 @@ DEFAULTS = {
     'hide_fullscreen': True, 'use_mcp': False,
     'mcp_url': 'http://127.0.0.1:27123/mcp/',
 }
+
+
+@dataclass(frozen=True)
+class CaptureSource:
+    path: Path
+    title: str
+    created: str
+    project: str
 
 
 def load_settings() -> dict:
@@ -134,11 +143,11 @@ class VaultStore:
             except FileExistsError:
                 number += 1
 
-    def raw_content(self, text: str, project: str, session: str):
-        now = datetime.now()
+    def raw_content(self, text: str, project: str, session: str, created: str = ''):
+        created = created or datetime.now().isoformat(timespec="seconds")
         return ('---\n'
                 'type: daily_capture\n'
-                f'created: {now.isoformat(timespec="seconds")}\n'
+                f'created: {created}\n'
                 f'project: {yaml_value(project)}\n'
                 'status: inbox\n'
                 'tags: [career, experience-log]\n'
@@ -162,11 +171,41 @@ class VaultStore:
                 reserved = self.reserve_note('03 Daily Logs', text)
                 self.sessions[session] = reserved.relative_to(self.root).as_posix()
             path = self._owned_path(self.sessions[session])
-            contents = self.raw_content(text, project, session)
+            meta,_=read_note(path)
+            stamp=re.search(r'^created:[ \t]*([^\n]+)',meta,re.M)
+            contents = self.raw_content(text, project, session, stamp[1].strip() if stamp else '')
             tmp = path.with_name(path.name+'.tmp')
             tmp.write_text(contents, encoding='utf-8')
             os.replace(tmp, path)  # atomic update of app-owned daily capture only
             return path
+
+    def capture_sources(self):
+        folder=self.root/'03 Daily Logs'
+        if folder.resolve()!=folder:
+            return []
+        captures=[]
+        for path in folder.glob('*.md'):
+            try:
+                if path.resolve()!=path:
+                    continue
+                meta,body=read_note(path)
+            except (OSError,UnicodeError):
+                continue
+            if not re.search(r'^type:[ \t]*daily_capture[ \t]*$',meta,re.M):
+                continue
+            stamp=re.search(r'^created:[ \t]*["\x27]?([^"\x27\n]+)',meta,re.M)
+            heading=re.search(r'^# (.+)',body,re.M)
+            field=re.search(r'^project:[ \t]*(.*)',meta,re.M)
+            project=field[1].strip() if field else ''
+            if project.startswith('"'):
+                try:
+                    project=json.loads(project)
+                except ValueError:
+                    project=project.strip('"')
+            captures.append(CaptureSource(path,heading[1] if heading else path.stem,
+                                          stamp[1].strip() if stamp else '',
+                                          project.strip("'").removeprefix('[[').removesuffix(']]')))
+        return sorted(captures,key=lambda capture:(capture.created,capture.path.name),reverse=True)
 
     def save_experience(self, title: str, body: str, project: str, source: str | None = None):
         if body.strip():
