@@ -10,6 +10,56 @@ import time
 import webbrowser
 
 IS_WINDOWS = sys.platform == 'win32'
+APP_ID = 'JOBBIT.ExperiencePet'
+
+
+def identify_app():
+    if IS_WINDOWS:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+
+
+def notebook_caption(window):
+    if not IS_WINDOWS:
+        return
+    from ctypes import wintypes
+    user32=ctypes.windll.user32
+    get_ancestor=user32.GetAncestor
+    get_ancestor.argtypes=(wintypes.HWND,wintypes.UINT)
+    get_ancestor.restype=wintypes.HWND
+    hwnd=get_ancestor(window.winfo_id(),2)
+    if hwnd:
+        set_attribute=ctypes.windll.dwmapi.DwmSetWindowAttribute
+        set_attribute.argtypes=(wintypes.HWND,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD)
+        for attribute,color in ((34,0xB0A876),(35,0xD2F5FB),(36,0x242424)):
+            value=wintypes.DWORD(color)
+            set_attribute(hwnd,attribute,ctypes.byref(value),ctypes.sizeof(value))
+
+
+class NotebookInstance:
+    """Route a repeated launch to the running pet in the same Windows session."""
+    def __init__(self):
+        self.handle=None
+        self.duplicate=False
+        if IS_WINDOWS:
+            from ctypes import wintypes
+            self.kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+            self.kernel.CreateEventW.argtypes=(ctypes.c_void_p,wintypes.BOOL,wintypes.BOOL,wintypes.LPCWSTR)
+            self.kernel.CreateEventW.restype=wintypes.HANDLE
+            self.kernel.SetEvent.argtypes=(wintypes.HANDLE,)
+            self.kernel.WaitForSingleObject.argtypes=(wintypes.HANDLE,wintypes.DWORD)
+            self.kernel.CloseHandle.argtypes=(wintypes.HANDLE,)
+            self.handle=self.kernel.CreateEventW(None,False,False,APP_ID+'.OpenNotebook')
+            self.duplicate=bool(self.handle and ctypes.get_last_error()==183)
+            if self.duplicate:
+                self.kernel.SetEvent(self.handle)
+
+    def requested(self):
+        return bool(self.handle and self.kernel.WaitForSingleObject(self.handle,0)==0)
+
+    def close(self):
+        if self.handle:
+            self.kernel.CloseHandle(self.handle)
+            self.handle=None
 
 
 def foreground_rect(screen_w:int, screen_h:int):

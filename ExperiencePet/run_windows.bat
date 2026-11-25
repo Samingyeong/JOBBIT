@@ -6,4 +6,4 @@ if not exist ".venv\Scripts\pythonw.exe" (
   pause
   exit /b 1
 )
-start "ExperiencePet" ".venv\Scripts\pythonw.exe" "app\main.py"
+start "ExperiencePet" ".venv\Scripts\pythonw.exe" "app\main.py" --open-notes

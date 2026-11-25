@@ -19,7 +19,7 @@ from experience_format import normalize, history, markdown_blocks, obsidian_uri
 from note_rows import NoteRows, rounded
 from vault import APP_DATA, make_gpt_prompt
 from chatgpt_desktop import open_interview
-from winbridge import launch_chatgpt
+from winbridge import launch_chatgpt, notebook_caption
 
 ASSETS = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'assets'
 BROWN = '#20201e'
@@ -103,14 +103,19 @@ class CaptureWindow:
     def __init__(self, app):
         self.app=app
         self.win=tk.Toplevel(app.root)
-        self.win.title('경험펫 · 오늘의 경험 기록')
+        self.win.withdraw()
+        self.win.title('짱구의 경험 기록장')
         self.win.geometry(f'{self.WIDTH}x{self.HEIGHT}')
         self.win.minsize(self.WIDTH,self.HEIGHT)
         self.win.maxsize(self.WIDTH,self.HEIGHT)
         self.win.configure(bg=PALE)
         self.win.protocol('WM_DELETE_WINDOW',self.hide)
-        try:self.win.iconbitmap(str(ASSETS/'shinchan_icon.ico'))
-        except (OSError,tk.TclError):pass
+        try:
+            self.window_icon=tk.PhotoImage(file=str(ASSETS/'shinchan_icon.png'),master=self.win)
+            self.win.iconphoto(True,self.window_icon)
+            self.win.iconbitmap(str(ASSETS/'shinchan_icon.ico'))
+        except (OSError,tk.TclError):
+            pass
         self.session=app.store.new_session() if app.store else None
         self.backup_id=uuid.uuid4().hex[:12]
         self.source_path=None
@@ -123,6 +128,8 @@ class CaptureWindow:
         self.win.bind('<Control-Return>', lambda e:self.send_to_chatgpt())
         self.win.bind('<Control-s>', lambda e:self.flush())
         self.win.bind('<Control-Shift-S>', lambda e:self.save_experience())
+        self.win.deiconify()
+        self.win.after_idle(lambda:notebook_caption(self.win) if self.win.winfo_exists() else None)
         self.raw.focus_set()
 
     def button(self,parent,label,action,color='#ffdd85'):
@@ -137,8 +144,9 @@ class CaptureWindow:
         self.win.configure(bg=LEMON)
         cover=tk.Frame(self.win,bg=LEMON)
         cover.pack(fill='both',expand=True)
-        self.cover=cover
-        self.archive_cast=self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True)
+        self.archive_art=None
+        self.archive_grid=None
+        self.archive_grid_size=None
         banner=tk.Canvas(cover,bg=LEMON,highlightthickness=0)
         banner.place(x=0,y=0,relwidth=1,relheight=1)
         self.cover_face=self.design_image('914', (101,103), (1.2855,1.0817,-.1128,0), 15.74)
@@ -181,14 +189,17 @@ class CaptureWindow:
                 banner.tag_bind(key,'<Enter>',lambda _:banner.configure(cursor='hand2'))
                 banner.tag_bind(key,'<Leave>',lambda _:banner.configure(cursor=''))
             self.draw_paper_edge(banner,width,height)
-            if self.view=='archive':
-                banner.create_image(*self.archive_position(banner),image=self.archive_cast,anchor='nw')
+            if self.view=='archive' and width>48 and height>167:
+                banner.create_image(24,150,image=self.archive_paper(width-48,height-167),anchor='nw')
+                banner.create_image(width-112,64,image=self.archive_art[0],anchor='nw')
+                banner.create_image(2,height-83,image=self.archive_art[1],anchor='nw')
 
         banner.bind('<Configure>',draw_banner)
         self.draw_banner=draw_banner
         for index,(key,_,_) in enumerate(tabs,1):
             self.win.bind(f'<Alt-Key-{index}>',lambda _,view=key:self.select_view(view))
         paper=tk.Frame(cover,bg=PAPER)
+        self.paper=paper
         paper.pack(fill='both',expand=True,padx=24,pady=(150,17))
         backing=tk.Canvas(paper,bg=PAPER,highlightthickness=0)
         backing.place(x=0,y=0,relwidth=1,relheight=1)
@@ -199,11 +210,10 @@ class CaptureWindow:
             if min(width,height)<=1:
                 return
             backing.delete('all')
+            offset=-((backing.winfo_rootx()-cover.winfo_rootx()-24)%274)
             for y in range(0,height,322):
-                for x in range(0,width,274):
+                for x in range(offset,width,274):
                     backing.create_image(x,y,image=self.paper_tile,anchor='nw')
-            if self.view=='archive':
-                backing.create_image(*self.archive_position(backing),image=self.archive_cast,anchor='nw')
 
         backing.bind('<Configure>',paint_paper)
         self.paint_paper=paint_paper
@@ -215,9 +225,7 @@ class CaptureWindow:
         self._build_memo()
         self._build_final()
         self._build_archive()
-        self.calendar=DiaryBoard(self.page,lambda:self.app.store,
-                                 lambda size,bold=False:cute_font(self.win,size,bold),
-                                 self.open_obsidian,ASSETS,self.paper_tile)
+        self.calendar=None
         self.action_row=tk.Frame(paper,bg=PAPER,pady=6)
         self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
@@ -233,9 +241,7 @@ class CaptureWindow:
             self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64, trim=True),
         )
         self.memo_footer.bind('<Configure>',self.draw_memo_footer)
-        self.final_art=self.make_art(paper,self.design_image('917',(160,158)),160,158,
-                                     ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
-        self.archive_lower_art=self.make_art(paper,self.design_image('921',(133,133),mirror=True),89,119)
+        self.final_art=None
         self.select_view('memo')
 
     def draw_paper_edge(self,canvas,width,height):
@@ -274,9 +280,16 @@ class CaptureWindow:
             widget.bind('<Configure>',lambda event: art.after_idle(lambda:paint(event) if art.winfo_ismapped() else None),add='+')
         return art
 
-    def archive_position(self,widget):
-        return (self.cover.winfo_rootx()+self.cover.winfo_width()-112-widget.winfo_rootx(),
-                self.cover.winfo_rooty()+64-widget.winfo_rooty())
+    def archive_paper(self,width,height):
+        if self.archive_grid_size!=(width,height):
+            grid=tk.PhotoImage(master=self.win,width=width,height=height)
+            for x in range(0,width,274):
+                for y in range(0,height,322):
+                    grid.tk.call(str(grid),'copy',str(self.paper_tile),'-from',0,0,
+                                 min(274,width-x),min(322,height-y),'-to',x,y)
+            self.archive_grid=grid
+            self.archive_grid_size=(width,height)
+        return self.archive_grid
 
     def draw_memo_footer(self, *_):
         footer=self.memo_footer
@@ -333,22 +346,8 @@ class CaptureWindow:
         self.filters=tk.Menu(self.filter_button,tearoff=False)
         self.filter_button.configure(menu=self.filters)
         self.records=NoteRows(self.archive_page,cute_font(self.win,10,True),height=157,
-                              on_select=self.read_record,on_open=self.open_record,
-                              art=self.archive_cast,art_position=self.archive_position)
+                              on_select=self.read_record,on_open=self.open_record)
         self.records.pack(fill='x',pady=(4,9))
-        upper_art=tk.Canvas(self.archive_page,bg=PAPER,width=72,height=36,highlightthickness=0)
-        upper_art.place(relx=1,anchor='ne')
-
-        def paint_upper(_):
-            upper_art.delete('all')
-            x,y=self.archive_position(upper_art)
-            grid_x=-((upper_art.winfo_rootx()-self.cover.winfo_rootx()-24)%274)
-            grid_y=-((upper_art.winfo_rooty()-self.cover.winfo_rooty()-150)%322)
-            for offset in (0,274):
-                upper_art.create_image(grid_x+offset,grid_y,image=self.paper_tile,anchor='nw')
-            upper_art.create_image(x,y,image=self.archive_cast,anchor='nw')
-
-        upper_art.bind('<Configure>',paint_upper)
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
@@ -442,14 +441,28 @@ class CaptureWindow:
     def select_view(self,view):
         if self.view==view:
             return
+        if view=='calendar' and self.calendar is None:
+            self.calendar=DiaryBoard(self.page,lambda:self.app.store,
+                                     lambda size,bold=False:cute_font(self.win,size,bold),
+                                     self.open_obsidian,ASSETS,self.paper_tile)
+        if view=='archive' and self.archive_art is None:
+            self.archive_art=(self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True),
+                              self.design_image('921',(62,62),mirror=True))
+        if view=='final' and self.final_art is None:
+            self.final_art=self.make_art(self.paper,self.design_image('917',(160,158)),160,158,
+                                         ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
         self.view=view
+        self.paper.pack_configure(padx=(66,112) if view=='archive' else 24)
         self.draw_banner()
-        self.paint_paper()
+        self.win.after_idle(self.paint_paper)
         self.memo_footer.pack_forget()
-        for art in (self.final_art,self.archive_lower_art):
-            art.place_forget()
-        self.page.pack_configure(pady=(24,0 if view=='memo' else 8))
+        if self.final_art:
+            self.final_art.place_forget()
+        self.page.pack_configure(padx=(2,12) if view=='archive' else 36,
+                                 pady=(24,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
+            if page is None:
+                continue
             page.pack_forget()
             if k==view:
                 page.pack(fill='both',expand=True)
@@ -473,7 +486,6 @@ class CaptureWindow:
         if view=='final':
             self.final_art.place(x=-24,rely=1,y=24,anchor='sw')
         if view=='archive':
-            self.archive_lower_art.place(x=-20,rely=1,y=12,anchor='sw')
             self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
 

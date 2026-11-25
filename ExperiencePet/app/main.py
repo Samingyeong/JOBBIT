@@ -23,7 +23,7 @@ from vault import VaultStore, load_settings, store_settings, make_gpt_prompt, AP
 from mcp_bridge import check_connection
 from chatgpt_desktop import open_interview
 from winbridge import (foreground_rect,fullscreen_external,set_startup,
-                       launch_chatgpt,GlobalHotkey)
+                       launch_chatgpt,GlobalHotkey,identify_app,NotebookInstance)
 
 HERE=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))
 CHROMA='#ff00ff'
@@ -133,7 +133,9 @@ class SettingsWindow:
 
 
 class ExperiencePet:
-    def __init__(self):
+    def __init__(self,instance=None):
+        identify_app()
+        self.instance=instance
         self.config=load_settings()
         self.store=None
         try:
@@ -376,6 +378,9 @@ class ExperiencePet:
         self.root.deiconify()
         self.root.lift()
     def poll_events(self):
+        if self.instance and self.instance.requested():
+            self.show()
+            self.open_notes()
         try:
             while True:
                 event=self.events.get_nowait()
@@ -397,4 +402,12 @@ class ExperiencePet:
     def run(self):self.root.mainloop()
 
 if __name__=='__main__':
-    ExperiencePet().run()
+    instance=NotebookInstance()
+    try:
+        if not instance.duplicate:
+            app=ExperiencePet(instance)
+            if '--open-notes' in sys.argv:
+                app.root.after_idle(app.open_notes)
+            app.run()
+    finally:
+        instance.close()

@@ -9,11 +9,10 @@ def rounded(canvas,x1,y1,x2,y2,r,fill,outline=''):
 
 
 class NoteRows(tk.Canvas):
-    def __init__(self,parent,font,*,height=150,on_select=None,on_open=None,art=None,art_position=None):
+    def __init__(self,parent,font,*,height=150,on_select=None,on_open=None,art=None):
         super().__init__(parent,bg='#fffdf5',height=height,highlightthickness=0,takefocus=True)
         self.font,self.on_select,self.on_open=font,on_select,on_open
         self.art=art
-        self.art_position=art_position
         self.labels=[]
         self.bounds=[]
         self.selected=None
@@ -40,13 +39,8 @@ class NoteRows(tk.Canvas):
         self.delete('all')
         self.bounds=[]
         right=width-4
-        art=self.art if self.art and (self.art_position or height>=self.art.height()+7) else None
-        art_x,art_y=width-3, height-3
-        anchor='se'
-        if art and self.art_position:
-            art_x,art_y=self.art_position(self)
-            anchor='nw'
-        text_right=min(right,art_x if anchor=='nw' else art_x-art.width()) if art else right
+        art=self.art if self.art and height>=self.art.height()+7 else None
+        text_right=right-art.width() if art else right
         text_width=max(30,text_right-20)
         top=5
         for index,label in enumerate(self.labels):
@@ -64,7 +58,7 @@ class NoteRows(tk.Canvas):
         rounded(self,2,2,right,total-2,8,'#fff5dc','#ae926d')
         self.tag_lower(self.find_all()[-1])
         if art:
-            self.create_image(art_x,art_y,image=art,anchor=anchor)
+            self.create_image(width-3,height-3,image=art,anchor='se')
         self.configure(scrollregion=(0,0,width,total),yscrollincrement=14)
 
     def scroll(self,event):
