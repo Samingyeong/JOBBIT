@@ -1,0 +1,5 @@
+Pillow>=10.2,<12
+pystray>=0.19.5,<1.0
+
+# Optional Obsidian MCP connection diagnostic (API-free; local only)
+mcp>=1.14,<2.0

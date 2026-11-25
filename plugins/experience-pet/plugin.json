@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "experience-pet",
+  "version": "0.3.0",
+  "description": "ChatGPT desktop에서 경험을 인터뷰하고 로컬 Obsidian Vault에 검토 후 저장하는 플러그인",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Experience Pet",
+        "shortDescription": "경험 인터뷰와 Obsidian 저장",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "오늘 기록한 경험일기로 인터뷰를 시작해줘.",
+          "지금까지 대화를 경험 노트로 정리해줘."
+        ]
+      }
+    }
+  }
+}
