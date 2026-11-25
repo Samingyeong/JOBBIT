@@ -14,7 +14,7 @@ from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
 
 from diary_board import DiaryBoard
-from experience_format import normalize, history, obsidian_uri
+from experience_format import normalize, history, markdown_blocks, obsidian_uri
 from vault import APP_DATA, make_gpt_prompt
 from chatgpt_desktop import open_interview
 from winbridge import launch_chatgpt
@@ -75,7 +75,7 @@ class CaptureWindow:
         self.title_var=tk.StringVar(value='오늘의 경험')
         self.project_var=tk.StringVar()
         self.status=tk.StringVar(value='메모는 입력 후 1초면 Obsidian에 원본으로 저장돼요.')
-        self.view='memo'
+        self.view=None
         self._build()
         self.win.bind('<Control-Return>', lambda e:self.send_to_chatgpt())
         self.win.bind('<Control-s>', lambda e:self.flush())
@@ -143,7 +143,6 @@ class CaptureWindow:
                 for x in range(0,width,274):
                     backing.create_image(x,y,image=self.paper_tile,anchor='nw')
 
-        self.paint_paper=paint_paper
         backing.bind('<Configure>',paint_paper)
         self.page=tk.Frame(paper,bg=PAPER)
         self.page.pack(fill='both',expand=True,padx=39,pady=(20,8))
@@ -153,7 +152,7 @@ class CaptureWindow:
         self._build_memo()
         self._build_final()
         self._build_archive()
-        self.calendar=DiaryBoard(self.page,lambda:self.app.store,lambda size:cute_font(self.win,size),ASSETS,self.open_obsidian)
+        self.calendar=DiaryBoard(self.page,lambda:self.app.store,lambda size:cute_font(self.win,size),self.open_obsidian)
         self.action_row=tk.Frame(paper,bg=PAPER,pady=6)
         self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
@@ -212,6 +211,9 @@ class CaptureWindow:
         return ImageTk.PhotoImage(result,master=self.win)
 
     def _build_archive(self):
+        self.archive_state=None
+        self.rendered_record=None
+        self.reader_tables=[]
         self.library_project=tk.StringVar(value='전체 프로젝트')
         self.filter_button=tk.Menubutton(self.archive_page,textvariable=self.library_project,
                               bg='#fdf5e4',fg=BROWN,relief='flat',padx=12,pady=6,cursor='hand2',
@@ -234,6 +236,7 @@ class CaptureWindow:
         scroll.configure(command=self.reader.yview)
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
         self.reader.pack(fill='both',expand=True)
+        self.reader.bind('<Configure>',self.resize_reader_tables)
         self.reader.configure(state='disabled')
 
     def refresh_archive(self,selection=None):
@@ -242,29 +245,70 @@ class CaptureWindow:
         rows=list(history(self.app.store.root)) if self.app.store else []
         names=set(self.app.store.project_names()) if self.app.store else set()
         names.update(p for p,*_ in rows if p)
+        choice=self.library_project.get()
+        state=(rows,names,choice)
+        if state==self.archive_state:
+            return
+        self.archive_state=state
+        previous=self.records.curselection()
+        previous_path=self.rows[previous[0]][2] if previous else None
         self.filters.delete(0,'end')
         for p in ['전체 프로젝트',*sorted(names),'프로젝트 미지정']:
             self.filters.add_command(label=p,command=lambda n=p:self.refresh_archive(n))
-        choice=self.library_project.get()
         self.rows=[r for r in rows if choice=='전체 프로젝트' or (r[0] or '프로젝트 미지정')==choice]
         self.records.delete(0,'end')
         for project,title,*_ in self.rows:
             self.records.insert('end','  '+title+'   ·   '+(project or '프로젝트 미지정'))
         if self.rows:
-            self.records.selection_set(0)
+            index=next((i for i,row in enumerate(self.rows) if row[2]==previous_path),0)
+            self.records.selection_set(index)
+            self.records.see(index)
         self.read_record()
 
     def read_record(self):
         pick=self.records.curselection()
         body=self.rows[pick[0]][3] if pick else '이 프로젝트에 저장한 경험이 아직 없어요.'
+        record=(self.rows[pick[0]][2] if pick else None,body)
+        if record==self.rendered_record:
+            return
+        self.rendered_record=record
         self.reader.configure(state='normal')
+        for table,_ in self.reader_tables:
+            table.destroy()
+        self.reader_tables.clear()
         self.reader.delete('1.0','end')
-        for line in body.splitlines():
-            if line.startswith('#'):
-                self.reader.insert('end',line.lstrip('# ').strip()+'\n','heading')
+        for block in markdown_blocks(body):
+            if isinstance(block,list):
+                self.insert_reader_table(block)
+            elif block.startswith('#'):
+                self.reader.insert('end',block.lstrip('# ').strip()+'\n','heading')
             else:
-                self.reader.insert('end',line+'\n')
+                self.reader.insert('end',block+'\n')
         self.reader.configure(state='disabled')
+
+    def insert_reader_table(self, rows):
+        table=tk.Frame(self.reader,bg=EDGE)
+        labels=[]
+        for row,values in enumerate(rows):
+            for column,value in enumerate(values):
+                label=tk.Label(table,text=value,justify='left',anchor='w',
+                               bg='#fff5d9' if row==0 else PAPER,fg=BROWN,padx=5,pady=3,
+                               font=cute_font(self.win,10,row==0))
+                label.grid(row=row,column=column,sticky='nsew',padx=(1,0),pady=(1,0))
+                labels.append(label)
+        for column in range(len(rows[0])):
+            table.columnconfigure(column,weight=1,uniform='column')
+        self.reader.window_create('end',window=table)
+        self.reader.insert('end','\n')
+        self.reader_tables.append((table,(len(rows[0]),labels)))
+        self.resize_reader_tables()
+
+    def resize_reader_tables(self,event=None):
+        available=max(self.reader.winfo_width()-24,180)
+        for _,(columns,labels) in self.reader_tables:
+            width=max(20,available//columns-12)
+            for label in labels:
+                label.configure(wraplength=width)
 
     def open_record(self):
         chosen=self.records.curselection()
@@ -278,8 +322,9 @@ class CaptureWindow:
             messagebox.showerror('Obsidian 열기',f'Obsidian을 실행할 수 없어요.\n{exc}',parent=self.win)
 
     def select_view(self,view):
+        if self.view==view:
+            return
         self.view=view
-        self.paint_paper()
         self.memo_footer.pack_forget()
         self.page.pack_configure(pady=(20,0 if view=='memo' else 8))
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
@@ -290,10 +335,9 @@ class CaptureWindow:
         actions={'memo':('ChatGPT에서 대화하기',self.send_to_chatgpt),'final':('Obsidian에 저장',self.save_experience),
                  'archive':('Obsidian에서 열기',self.open_record)}
         if view=='calendar':
-            self.flush()
-            self.calendar.refresh()
             self.action.pack_forget()
             self.action_row.pack_forget()
+            self.win.after_idle(lambda:self.calendar.refresh() if self.view=='calendar' else None)
             return
         if not self.action_row.winfo_manager():
             self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
@@ -304,7 +348,7 @@ class CaptureWindow:
             self.memo_footer.pack(side='bottom',fill='x',before=self.page)
             self.redraw_tags()
         if view=='archive':
-            self.refresh_archive()
+            self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
 
     def _entry(self, parent, var):

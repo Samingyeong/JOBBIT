@@ -1,4 +1,5 @@
 """One Markdown outline for interview prompts, imports and saved notes."""
+from functools import lru_cache
 import re
 from pathlib import Path
 from urllib.parse import quote
@@ -55,14 +56,69 @@ def normalize(text):
 def obsidian_uri(path):
     return 'obsidian://open?path='+quote(str(Path(path).resolve()),safe='')
 
-def history(root):
+def note_paths(root, folder):
     roots=[root]
     if root.name=='Career_Experience_Vault' and (root.parent/'.obsidian').is_dir():
         roots.append(root.parent)
     for base in roots:
-        for path in sorted((base/'02 Experiences').glob('*.md'),reverse=True):
-            meta,body=split_note(path.read_text(encoding='utf-8-sig'))
+        yield from sorted((base/folder).glob('*.md'),reverse=True)
+
+@lru_cache(maxsize=256)
+def _read_note(path, modified, size):
+    return split_note(path.read_text(encoding='utf-8-sig'))
+
+def read_note(path):
+    stat=path.stat()
+    return _read_note(path,stat.st_mtime_ns,stat.st_size)
+
+def dated_history(root):
+    for path in note_paths(root,'02 Experiences'):
+        try:
+            meta,body=read_note(path)
+        except (OSError, UnicodeError):
+            continue
+        else:
             prop=re.search(r'^project:\s*([^\n]*)',meta,re.M)
             project=prop[1].strip().strip('"\'').removeprefix('[[').removesuffix(']]') if prop else ''
             title=re.search(r'^# (.+)',body,re.M)
-            yield project,title[1] if title else path.stem,path,body
+            yield project,title[1] if title else path.stem,path,body,meta
+
+def history(root):
+    for project,title,path,body,_ in dated_history(root):
+        yield project,title,path,body
+
+def markdown_cells(line):
+    line=line.strip().removeprefix('|')
+    cells=re.split(r'(?<!\\)\|',line)
+    if len(cells)>1 and not cells[-1].strip():
+        cells.pop()
+    return [cell.strip().replace(r'\|','|') for cell in cells]
+
+def markdown_blocks(body):
+    """Yield text lines and GFM table rows, leaving fenced code intact."""
+    lines=body.splitlines()
+    index=0
+    fence=None
+    while index<len(lines):
+        line=lines[index]
+        marker=re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$',line)
+        if marker:
+            token,remainder=marker.groups()
+            if fence is None:
+                fence=token
+            elif token.startswith(fence) and not remainder.strip():
+                fence=None
+        if fence is None and index+1<len(lines) and '|' in line:
+            headers=markdown_cells(line)
+            rules=markdown_cells(lines[index+1])
+            if len(headers)==len(rules) and all(re.fullmatch(r':?-{3,}:?',r) for r in rules):
+                rows=[headers]
+                index+=2
+                while index<len(lines) and '|' in lines[index] and lines[index].strip():
+                    cells=markdown_cells(lines[index])
+                    rows.append((cells+['']*len(headers))[:len(headers)])
+                    index+=1
+                yield rows
+                continue
+        yield line
+        index+=1
