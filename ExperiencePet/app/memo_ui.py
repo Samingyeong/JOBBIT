@@ -41,7 +41,9 @@ def cute_font(win, size=11, bold=False):
             'BM JUA', '여기어때 잘난체', '나눔스퀘어라운드',
             'NanumSquareRound', '맑은 고딕', 'Malgun Gothic'
         ) if name in names), 'Malgun Gothic')
-    return (cute_font._family, size, 'bold' if bold else 'normal')
+    if not bold:
+        return ('Malgun Gothic', size, 'normal')
+    return (cute_font._family, size, 'normal')
 
 
 def roundrect(canvas, x1,y1,x2,y2,r, **kw):
@@ -103,19 +105,27 @@ class CaptureWindow:
             banner.delete('all')
             banner.create_image(-230,-41,image=self.cover_pattern,anchor='nw')
             banner.create_image(event.width-260,-41,image=self.cover_pattern,anchor='nw')
-            banner.create_image(center-216,-6,image=self.cover_face,anchor='nw')
-            banner.create_image(center+154,31,image=self.cover_friend,anchor='nw')
-            banner.create_text(center,56,text='짱구의 경험 기록장',font=cute_font(self.win,26,True),fill=BROWN)
+            from tkinter.font import Font
+            title='짱구의 경험 기록장'
+            font=Font(root=self.win,font=cute_font(self.win,26,True))
+            max_width=max(event.width-222,150)
+            while font.measure(title)>max_width and font.cget('size')>10:
+                font.configure(size=font.cget('size')-1)
+            self.banner_font=font
+            half=font.measure(title)/2
+            banner.create_image(center-half+4,-6,image=self.cover_face,anchor='ne')
+            banner.create_image(center+half+4,31,image=self.cover_friend,anchor='nw')
+            banner.create_text(center,51,text=title,font=font,fill=BROWN)
 
         banner.bind('<Configure>',draw_banner)
-        rail=tk.Frame(cover,bg=LEMON,height=42)
+        rail=tk.Frame(cover,bg=LEMON,height=44)
         rail.pack(fill='x',padx=(47,0))
         rail.pack_propagate(False)
         self.tabs={}
         for key,label,color in [('memo','오늘 이야기','#fa5b60'),('final','완성노트','#ffd567'),('archive','경험모음','#84e36e'),('calendar','일기달력','#6875f5')]:
             btn=self.button(rail,label,lambda k=key:self.select_view(k),color)
             btn.configure(activebackground=color)
-            btn.place(x=109*len(self.tabs),y=12,width=100,height=42)
+            btn.place(x=109*len(self.tabs),y=8,width=100,height=36)
             self.tabs[key]=btn
         paper=tk.Frame(cover,bg=PAPER,highlightbackground=EDGE,highlightthickness=2)
         paper.pack(fill='both',expand=True)
@@ -141,7 +151,7 @@ class CaptureWindow:
         self.paint_paper=paint_paper
         backing.bind('<Configure>',paint_paper)
         self.page=tk.Frame(paper,bg=PAPER)
-        self.page.pack(fill='both',expand=True,padx=39,pady=(26,10))
+        self.page.pack(fill='both',expand=True,padx=39,pady=(20,8))
         self.memo_page=tk.Frame(self.page,bg='#fffdf5')
         self.final_page=tk.Frame(self.page,bg='#fffdf5')
         self.archive_page=tk.Frame(self.page,bg='#fffdf5')
@@ -150,7 +160,7 @@ class CaptureWindow:
         self._build_archive()
         self.calendar=DiaryBoard(self.page,lambda:self.app.store,lambda size:cute_font(self.win,size),ASSETS,self.open_obsidian)
         self.action_row=tk.Frame(paper,bg=PAPER,pady=6)
-        self.action_row.pack(fill='x',padx=40)
+        self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action=self.button(self.action_row,'ChatGPT에서 대화하기',self.send_to_chatgpt,'#ffd567')
         self.action.pack(side='right')
         tk.Label(self.action_row,textvariable=self.status,bg=PAPER,fg=BROWN,
@@ -171,7 +181,8 @@ class CaptureWindow:
     def _build_archive(self):
         self.library_project=tk.StringVar(value='전체 프로젝트')
         self.filter_button=tk.Menubutton(self.archive_page,textvariable=self.library_project,
-                              bg='#c5e6d1',fg=BROWN,relief='flat',padx=12,pady=6,cursor='hand2')
+                              bg='#fdf5e4',fg=BROWN,relief='flat',padx=12,pady=6,cursor='hand2',
+                              font=cute_font(self.win,10))
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False)
         self.filter_button.configure(menu=self.filters)
@@ -180,8 +191,14 @@ class CaptureWindow:
                         selectbackground='#f8cc78',selectforeground=BROWN,font=cute_font(self.win,11))
         self.records.pack(fill='x',pady=8)
         self.records.bind('<<ListboxSelect>>',lambda e:self.read_record())
-        self.reader=tk.Text(self.archive_page,wrap='word',bg='#fffdf5',fg=BROWN,
+        reading_area=tk.Frame(self.archive_page,bg=PAPER)
+        reading_area.pack(fill='both',expand=True)
+        scroll=tk.Scrollbar(reading_area)
+        scroll.pack(side='right',fill='y')
+        self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
                         bd=0,highlightthickness=0,padx=8,pady=4,font=cute_font(self.win,11))
+        self.reader.configure(yscrollcommand=scroll.set)
+        scroll.configure(command=self.reader.yview)
         self.reader.tag_configure('heading',font=cute_font(self.win,13,True),foreground='#994e44',spacing1=10)
         self.reader.pack(fill='both',expand=True)
         self.reader.configure(state='disabled')
@@ -232,7 +249,7 @@ class CaptureWindow:
         self.paint_paper()
         for k,page in [('memo',self.memo_page),('final',self.final_page),('archive',self.archive_page),('calendar',self.calendar)]:
             page.pack_forget()
-            self.tabs[k].place_configure(y=0 if k==view else 12)
+            self.tabs[k].place_configure(y=0 if k==view else 8,height=44 if k==view else 36)
             if k==view:
                 page.pack(fill='both',expand=True)
         actions={'memo':('ChatGPT에서 대화하기',self.send_to_chatgpt),'final':('Obsidian에 저장',self.save_experience),
@@ -241,7 +258,10 @@ class CaptureWindow:
             self.flush()
             self.calendar.refresh()
             self.action.pack_forget()
+            self.action_row.pack_forget()
             return
+        if not self.action_row.winfo_manager():
+            self.action_row.pack(side='bottom',fill='x',padx=40,before=self.page)
         self.action.pack(side='right')
         label,fn=actions[view]
         self.action.configure(text=label,command=fn)
