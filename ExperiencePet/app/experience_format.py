@@ -1,5 +1,6 @@
 """One Markdown outline for interview prompts, imports and saved notes."""
 from functools import lru_cache
+from datetime import datetime
 import re
 from pathlib import Path
 from urllib.parse import quote
@@ -84,8 +85,19 @@ def dated_history(root):
             yield project,title[1] if title else path.stem,path,body,meta
 
 def history(root):
-    for project,title,path,body,_ in dated_history(root):
-        yield project,title,path,body
+    ranked=[]
+    for project,title,path,body,meta in dated_history(root):
+        stamp=re.search(r'^created:[ \t]*([^\n]+)',meta,re.M)
+        try:
+            modified=path.stat().st_mtime_ns
+        except OSError:
+            continue
+        try:
+            created=datetime.fromisoformat(stamp[1].strip().strip('"\x27')).timestamp() if stamp else modified/1e9
+        except (ValueError,OSError,OverflowError):
+            created=modified/1e9
+        ranked.append(((created,modified,path.name.casefold()),(project,title,path,body)))
+    return [row for _,row in sorted(ranked,key=lambda item:item[0],reverse=True)]
 
 def markdown_cells(line):
     line=line.strip().removeprefix('|')

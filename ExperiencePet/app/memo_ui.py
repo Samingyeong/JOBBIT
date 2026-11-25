@@ -349,6 +349,10 @@ class CaptureWindow:
 
     def _build_archive(self):
         self.archive_state=None
+        self.archive_rows=[]
+        self.rows=[]
+        self.archive_query_after=None
+        self.new_archive_path=None
         self.rendered_record=None
         self.reader_tables=[]
         self.reader_links=[]
@@ -360,6 +364,16 @@ class CaptureWindow:
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False,font=project_font)
         self.filter_button.configure(menu=self.filters)
+        self.archive_query=tk.StringVar()
+        search=tk.Frame(self.archive_page,bg=PAPER)
+        search.pack(fill='x',pady=(3,4))
+        tk.Label(search,text='경험 검색',bg=PAPER,fg=BROWN,font=project_font).pack(side='left',padx=(0,8))
+        self.archive_search=tk.Entry(search,textvariable=self.archive_query,bg='white',fg=BROWN,
+                                     font=cute_font(self.win,10),relief='flat',highlightthickness=1,
+                                     highlightbackground='#d5bea0',highlightcolor=EDGE)
+        self.archive_search.pack(side='left',fill='x',expand=True,ipady=3)
+        self.archive_search.bind('<Escape>',lambda _:self.archive_query.set(''))
+        self.archive_query.trace_add('write',self.schedule_archive_query)
         record_panel=tk.Frame(self.archive_page,bg=PAPER)
         record_panel.pack(fill='x',pady=(4,9))
         self.records=NoteRows(record_panel,project_font,height=157,
@@ -382,32 +396,56 @@ class CaptureWindow:
         self.reader.bind('<Configure>',self.resize_reader_tables)
         self.reader.configure(state='disabled')
 
-    def refresh_archive(self,selection=None):
-        if selection is not None:
-            self.library_project.set(selection)
-        rows=list(history(self.app.store.root)) if self.app.store else []
+    def refresh_archive(self):
+        self.archive_rows=history(self.app.store.root) if self.app.store else []
         names=set(self.app.store.project_names()) if self.app.store else set()
-        names.update(p for p,*_ in rows if p)
+        names.update(p for p,*_ in self.archive_rows if p)
+        self.filters.delete(0,'end')
+        for name in ['전체 프로젝트',*sorted(names),'프로젝트 미지정']:
+            self.filters.add_command(label=name,command=lambda project=name:self.filter_archive(project))
+        self.filter_archive()
+
+    def schedule_archive_query(self,*_):
+        if self.archive_query_after is not None:
+            self.win.after_cancel(self.archive_query_after)
+        self.archive_query_after=self.win.after(110,self.filter_archive)
+
+    def filter_archive(self,project=None):
+        if self.archive_query_after is not None:
+            self.win.after_cancel(self.archive_query_after)
+            self.archive_query_after=None
+        if project is not None:
+            self.library_project.set(project)
         choice=self.library_project.get()
-        state=(rows,names,choice)
-        if state==self.archive_state:
+        terms=self.archive_query.get().casefold().split()
+        state=(self.archive_rows,choice,terms)
+        target=self.new_archive_path
+        self.new_archive_path=None
+        if state==self.archive_state and target is None:
             return
         self.archive_state=state
         previous=self.records.selected
-        previous_path=self.rows[previous][2] if previous is not None else None
-        self.filters.delete(0,'end')
-        for p in ['전체 프로젝트',*sorted(names),'프로젝트 미지정']:
-            self.filters.add_command(label=p,command=lambda n=p:self.refresh_archive(n))
-        self.rows=[r for r in rows if choice=='전체 프로젝트' or (r[0] or '프로젝트 미지정')==choice]
-        labels=[f'{title} · {project or "프로젝트 미지정"}' for project,title,*_ in self.rows]
-        index=next((i for i,row in enumerate(self.rows) if row[2]==previous_path),0)
-        self.records.set_rows(labels,selected=index,placeholder='저장된 경험이 없어요.')
+        if target is None and previous is not None:
+            target=self.rows[previous][2]
+        self.rows=[]
+        labels=[]
+        for row in self.archive_rows:
+            project,title,*_=row
+            project=project or '프로젝트 미지정'
+            label=f'[{project}] - {title}'
+            searchable=label.casefold()
+            if (choice=='전체 프로젝트' or project==choice) and all(term in searchable for term in terms):
+                self.rows.append(row)
+                labels.append(label)
+        index=next((i for i,row in enumerate(self.rows) if row[2]==target),0)
+        placeholder='검색 결과가 없어요.' if terms else '저장된 경험이 없어요.'
+        self.records.set_rows(labels,selected=index,placeholder=placeholder)
         self.read_record()
 
     def read_record(self):
         pick=self.records.selected
         row=self.rows[pick] if pick is not None else None
-        body=row[3] if row else '이 프로젝트에 저장한 경험이 아직 없어요.'
+        body=row[3] if row else self.records.placeholder
         record=(row[2] if row else None,body)
         if record==self.rendered_record:
             return
@@ -893,6 +931,10 @@ class CaptureWindow:
             messagebox.showerror('저장 실패',str(exc),parent=self.win)
         else:
             self.status.set(f'✓ 새 경험 노트 저장: {path.name}')
+            self.library_project.set('전체 프로젝트')
+            self.archive_query.set('')
+            self.new_archive_path=path
+            self.select_view('archive')
             if messagebox.askyesno('저장 완료',f'Obsidian에 저장했어!\n{path.name}\n\n노트를 열어 볼까?',parent=self.win):
                 self.open_obsidian(path)
 
