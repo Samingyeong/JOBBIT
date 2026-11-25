@@ -61,7 +61,8 @@ class DiaryBoard(tk.Frame):
         self.face=self.calendar_image(assets,907,(47,35))
         self.small_face=self.calendar_image(assets,907,(19,14))
         self.frog=self.calendar_image(assets,923,(52,57),11.19)
-        self.corner=self.calendar_image(assets,920,(72,80))
+        self.corner=self.calendar_image(assets,920,(96,108))
+        action_font=('Malgun Gothic',11,'normal')
         bar = tk.Frame(self, bg=PAPER)
         bar.pack(fill='x')
         tk.Button(bar, text='‹', command=lambda: self.shift(-1), relief='flat',
@@ -90,7 +91,7 @@ class DiaryBoard(tk.Frame):
         tk.Label(note_header,textvariable=self.notes_heading,bg=PAPER,fg=INK,font=font(11,True)).pack(side='left')
         tk.Button(note_header,text='노트 열기 ↗',command=self.open_note,bg='#ffefae',
                   activebackground='#ffd567',fg=INK,borderwidth=0,cursor='hand2',
-                  font=font(9,True),padx=7,pady=3).pack(side='right')
+                  font=action_font,padx=7,pady=3).pack(side='right')
         self.notes=NoteRows(notes,font(10),height=70,on_open=self.open_note,art=self.corner)
         self.notes.pack(fill='both',expand=True,pady=(5,0))
         tk.Label(todo,text='체크리스트',bg=PAPER,fg=INK,font=font(11,True)).pack(anchor='w')
@@ -101,14 +102,14 @@ class DiaryBoard(tk.Frame):
         self.todo.bind('<Button-1>',self.click_task)
         entry_row=tk.Frame(self,bg=CREAM,highlightbackground='#d5bea0',highlightthickness=1)
         entry_row.pack(side='bottom',fill='x',pady=(7,0),before=panels)
-        tk.Label(entry_row,text='새 할 일',bg=CREAM,fg=INK,font=font(10,True)).pack(side='left',padx=(9,8))
+        tk.Label(entry_row,text='새 할 일',bg=CREAM,fg=INK,font=action_font).pack(side='left',padx=(9,8))
         self.entry=tk.Entry(entry_row,font=font(10),bg='white',fg=INK,relief='flat',borderwidth=0,
                             highlightbackground='#e1cfac',highlightcolor=EDGE,highlightthickness=1)
         self.entry.pack(side='left',fill='x',expand=True,ipady=4,pady=5)
         self.entry.bind('<Return>', self.add)
         self.add_button=tk.Button(entry_row,text='+ 할 일 추가',command=self.add,bg='#ffdf83',
                                   activebackground='#ffd567',fg=INK,relief='flat',cursor='hand2',
-                                  font=font(10,True),padx=9,pady=4)
+                                  font=action_font,padx=9,pady=4)
         self.add_button.pack(side='left',padx=(7,5),pady=5)
         self.bind('<Configure>', self.fit_calendar)
 
@@ -172,7 +173,7 @@ class DiaryBoard(tk.Frame):
                 art=self.frog if day==self.selected else self.face
                 if marked and spacious:
                     if day==self.selected:
-                        self.board.create_image(x+19,y,image=art)
+                        self.board.create_image(x+27,y,image=art)
                     else:
                         self.board.create_image(x,y,image=art)
                 if not (marked and spacious) or day==self.selected:

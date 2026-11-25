@@ -137,6 +137,8 @@ class CaptureWindow:
         self.win.configure(bg=LEMON)
         cover=tk.Frame(self.win,bg=LEMON)
         cover.pack(fill='both',expand=True)
+        self.cover=cover
+        self.archive_cast=self.design_image('902',(125,253),(2.0177,1,-.5265,0),mirror=True)
         banner=tk.Canvas(cover,bg=LEMON,highlightthickness=0)
         banner.place(x=0,y=0,relwidth=1,relheight=1)
         self.cover_face=self.design_image('914', (101,103), (1.2855,1.0817,-.1128,0), 15.74)
@@ -179,6 +181,8 @@ class CaptureWindow:
                 banner.tag_bind(key,'<Enter>',lambda _:banner.configure(cursor='hand2'))
                 banner.tag_bind(key,'<Leave>',lambda _:banner.configure(cursor=''))
             self.draw_paper_edge(banner,width,height)
+            if self.view=='archive':
+                banner.create_image(*self.archive_position(banner),image=self.archive_cast,anchor='nw')
 
         banner.bind('<Configure>',draw_banner)
         self.draw_banner=draw_banner
@@ -198,8 +202,11 @@ class CaptureWindow:
             for y in range(0,height,322):
                 for x in range(0,width,274):
                     backing.create_image(x,y,image=self.paper_tile,anchor='nw')
+            if self.view=='archive':
+                backing.create_image(*self.archive_position(backing),image=self.archive_cast,anchor='nw')
 
         backing.bind('<Configure>',paint_paper)
+        self.paint_paper=paint_paper
         self.page=tk.Frame(paper,bg=PAPER)
         self.page.pack(fill='both',expand=True,padx=36,pady=(24,8))
         self.memo_page=tk.Frame(self.page,bg='#fffdf5')
@@ -226,9 +233,9 @@ class CaptureWindow:
             self.design_image('904', (112,102), (2.2009,2.4154,-.5633,-.6824), 12.64, trim=True),
         )
         self.memo_footer.bind('<Configure>',self.draw_memo_footer)
-        self.final_art=self.make_art(paper,self.design_image('917',(147,145)),147,145,
+        self.final_art=self.make_art(paper,self.design_image('917',(160,158)),160,158,
                                      ((self.final_sheet,CREAM,EDGE),(self.preview,'white','')))
-        self.archive_lower_art=self.make_art(paper,self.design_image('921',(105,105),mirror=True),78,105)
+        self.archive_lower_art=self.make_art(paper,self.design_image('921',(133,133),mirror=True),89,119)
         self.select_view('memo')
 
     def draw_paper_edge(self,canvas,width,height):
@@ -266,6 +273,10 @@ class CaptureWindow:
         for widget,_,_ in surfaces:
             widget.bind('<Configure>',lambda event: art.after_idle(lambda:paint(event) if art.winfo_ismapped() else None),add='+')
         return art
+
+    def archive_position(self,widget):
+        return (self.cover.winfo_rootx()+self.cover.winfo_width()-112-widget.winfo_rootx(),
+                self.cover.winfo_rooty()+64-widget.winfo_rooty())
 
     def draw_memo_footer(self, *_):
         footer=self.memo_footer
@@ -321,10 +332,23 @@ class CaptureWindow:
         self.filter_button.pack(anchor='w')
         self.filters=tk.Menu(self.filter_button,tearoff=False)
         self.filter_button.configure(menu=self.filters)
-        archive_cast=self.design_image('902',(77,149),(2.0177,1,-.5265,0),mirror=True)
         self.records=NoteRows(self.archive_page,cute_font(self.win,10,True),height=157,
-                              on_select=self.read_record,on_open=self.open_record,art=archive_cast)
+                              on_select=self.read_record,on_open=self.open_record,
+                              art=self.archive_cast,art_position=self.archive_position)
         self.records.pack(fill='x',pady=(4,9))
+        upper_art=tk.Canvas(self.archive_page,bg=PAPER,width=72,height=36,highlightthickness=0)
+        upper_art.place(relx=1,anchor='ne')
+
+        def paint_upper(_):
+            upper_art.delete('all')
+            x,y=self.archive_position(upper_art)
+            grid_x=-((upper_art.winfo_rootx()-self.cover.winfo_rootx()-24)%274)
+            grid_y=-((upper_art.winfo_rooty()-self.cover.winfo_rooty()-150)%322)
+            for offset in (0,274):
+                upper_art.create_image(grid_x+offset,grid_y,image=self.paper_tile,anchor='nw')
+            upper_art.create_image(x,y,image=self.archive_cast,anchor='nw')
+
+        upper_art.bind('<Configure>',paint_upper)
         reading_area=tk.Frame(self.archive_page,bg=PAPER)
         reading_area.pack(fill='both',expand=True)
         self.reader=tk.Text(reading_area,wrap='word',bg='#fffdf5',fg=BROWN,
@@ -420,6 +444,7 @@ class CaptureWindow:
             return
         self.view=view
         self.draw_banner()
+        self.paint_paper()
         self.memo_footer.pack_forget()
         for art in (self.final_art,self.archive_lower_art):
             art.place_forget()
@@ -446,9 +471,9 @@ class CaptureWindow:
             self.memo_footer.pack(side='bottom',fill='x',before=self.page)
             self.redraw_tags()
         if view=='final':
-            self.final_art.place(x=-7,rely=1,y=1,anchor='sw')
+            self.final_art.place(x=-24,rely=1,y=24,anchor='sw')
         if view=='archive':
-            self.archive_lower_art.place(x=-9,rely=1,y=1,anchor='sw')
+            self.archive_lower_art.place(x=-20,rely=1,y=12,anchor='sw')
             self.win.after_idle(lambda:self.refresh_archive() if self.view=='archive' else None)
 
 
