@@ -916,17 +916,22 @@ class CaptureWindow:
         if not body:
             messagebox.showinfo('정리본 필요','ChatGPT의 최종 정리본을 붙여넣거나 양식을 채워 줘.',parent=self.win)
             return
+        title=self.title_var.get().strip()
+        if not title:
+            messagebox.showinfo('경험 제목 필요','완성노트의 경험 제목을 입력해 주세요.',parent=self.win)
+            return
         source=next((capture for capture in self.app.store.capture_sources() if capture.path==self.final_source),None)
         if self.final_source is not None and source is None:
             messagebox.showwarning('원본 기록 확인','선택한 원본이 없어졌어요. 해당 경험에서 다시 선택해 주세요.',parent=self.win)
             self.refresh_capture_choices()
             return
-        caption=f'\n해당 경험: {source.title}' if source else '\n연결한 원본 없음'
+        caption=f'\n경험 제목: {title}'
         if not messagebox.askyesno('경험 노트 확정','수치와 사실을 확인했어?\n확정한 내용으로 새 노트를 저장할게.'+caption,parent=self.win):
             return
         try:
             project=source.project if source else self.project_var.get()
-            path=self.app.store.save_experience(self.title_var.get(),body,project,source.path if source else None)
+            path=self.app.store.save_experience(title,body,project,source.path if source else None,
+                                                infer_title=False)
         except Exception as exc:
             messagebox.showerror('저장 실패',str(exc),parent=self.win)
         else:

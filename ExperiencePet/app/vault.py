@@ -207,10 +207,11 @@ class VaultStore:
                                           project.strip("'").removeprefix('[[').removesuffix(']]')))
         return sorted(captures,key=lambda capture:(capture.created,capture.path.name),reverse=True)
 
-    def save_experience(self, title: str, body: str, project: str, source: str | None = None):
+    def save_experience(self, title: str, body: str, project: str, source: str | None = None,
+                        *, infer_title: bool = True):
         if body.strip():
             parsed_title, body = normalize(body)
-            if parsed_title and title.strip() in ('','오늘의 경험'):
+            if infer_title and parsed_title and title.strip() in ('','오늘의 경험'):
                 title=parsed_title
         if not title.strip() or not body.strip():
             raise ValueError('제목과 경험 본문을 입력해 주세요.')
